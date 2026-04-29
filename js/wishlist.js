@@ -90,6 +90,13 @@ export function render(container) {
   _ideasCache     = [];
   _mobileView     = 'list';
 
+  // Pending author filter nastavený z Dashboardu (klik na člena)
+  const pendingAuthor = sessionStorage.getItem('wl_pending_author');
+  if (pendingAuthor) {
+    _filters.author = pendingAuthor;
+    sessionStorage.removeItem('wl_pending_author');
+  }
+
   container.innerHTML = buildShell();
 
   /* Modal */
@@ -586,7 +593,7 @@ function subscribeIdeas() {
 function updateFilterOptions() {
   const authorSel = _container?.querySelector('#wl-filter-author');
   if (authorSel) {
-    const cur = authorSel.value;
+    const cur = _filters.author || authorSel.value;
     authorSel.innerHTML = '<option value="">Všichni autoři</option>'
       + [..._authorsCache].sort().map(a =>
           `<option value="${esc(a)}"${a === cur ? ' selected' : ''}>${esc(a)}</option>`
