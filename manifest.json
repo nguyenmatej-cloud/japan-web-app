@@ -1,0 +1,19 @@
+{
+  "name": "Japan Trip 2026",
+  "short_name": "Japan 2026",
+  "description": "Skupinový plánovač cesty do Japonska – 7. 9. – 20. 9. 2026",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#4F46E5",
+  "theme_color": "#4F46E5",
+  "lang": "cs",
+  "icons": [
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
