@@ -7,7 +7,7 @@ import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   query, orderBy, onSnapshot, serverTimestamp,
   arrayUnion, arrayRemove,
-} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js';
 
 /* ── Konstanty ───────────────────────────────────────────────── */
 

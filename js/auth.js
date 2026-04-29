@@ -12,13 +12,13 @@ import {
   browserLocalPersistence,
   signOut as fbSignOut,
   onAuthStateChanged,
-} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
+} from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js';
 import {
   doc,
   getDoc,
   setDoc,
   serverTimestamp,
-} from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+} from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js';
 
 /* ── Provider ─────────────────────────────────────────────── */
 
