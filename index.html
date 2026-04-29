@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="cs" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="description" content="Japan Trip 2026 – skupinový plánovač cesty" />
+  <meta name="theme-color" content="#4F46E5" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>🇯🇵 Japan Trip 2026</title>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+
+  <!-- Main CSS -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ========================================================
+       SPLASH / LOADING SCREEN
+  ======================================================== -->
+  <div id="splash-screen" class="splash" aria-live="polite" aria-label="Načítání aplikace">
+    <div class="splash__inner">
+      <div class="splash__torii" aria-hidden="true">⛩️</div>
+      <h1 class="splash__title">Japan Trip 2026</h1>
+      <p class="splash__sub">7. 9. – 20. 9. 2026</p>
+      <div class="splash__spinner" role="status">
+        <span class="sr-only">Načítání…</span>
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       AUTH SCREEN (login)
+  ======================================================== -->
+  <div id="auth-screen" class="auth-screen hidden" role="main" aria-labelledby="auth-heading">
+    <div class="auth-card">
+      <div class="auth-card__torii" aria-hidden="true">⛩️</div>
+      <h1 id="auth-heading" class="auth-card__title">Japan Trip 2026</h1>
+      <p class="auth-card__dates">7. 9. – 20. 9. 2026 • Praha → Tokio</p>
+      <p class="auth-card__desc">Skupinový plánovač cesty pro 6 přátel</p>
+
+      <button id="btn-google-login" class="btn btn--google" aria-label="Přihlásit se pomocí Google účtu">
+        <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+        </svg>
+        Přihlásit se přes Google
+      </button>
+
+      <div id="auth-error" class="auth-error hidden" role="alert" aria-live="assertive"></div>
+
+      <p class="auth-card__note">Přístup pouze pro členy skupiny Japan Trip 2026</p>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       ACCESS DENIED SCREEN
+  ======================================================== -->
+  <div id="access-denied-screen" class="access-denied hidden" role="main" aria-labelledby="denied-heading">
+    <div class="access-denied__card">
+      <div class="access-denied__icon" aria-hidden="true">🚫</div>
+      <h1 id="denied-heading">Nemáš přístup</h1>
+      <p>Tvůj email není na seznamu účastníků Japan Trip 2026.</p>
+      <p class="access-denied__email" id="denied-email"></p>
+      <p>Pokud si myslíš, že jde o chybu, ozvi se organizátorovi.</p>
+      <button id="btn-logout-denied" class="btn btn--secondary">Odhlásit se</button>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       ONBOARDING MODAL
+  ======================================================== -->
+  <div id="onboarding-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+    <div class="modal__backdrop"></div>
+    <div class="modal__content onboarding">
+      <div class="onboarding__progress" id="onboarding-progress" aria-label="Krok onboardingu">
+        <div class="onboarding__progress-bar" id="onboarding-progress-bar"></div>
+      </div>
+
+      <!-- Step 1: Vítej -->
+      <div class="onboarding__step" id="onboarding-step-1">
+        <div class="onboarding__emoji" aria-hidden="true">⛩️</div>
+        <h2 id="onboarding-title">Vítej v Japan Trip 2026!</h2>
+        <p>Tato aplikace je tvůj centrální hub pro plánování a průběh naší cesty do Japonska.</p>
+        <p class="onboarding__dates"><strong>7. 9. – 20. 9. 2026</strong></p>
+      </div>
+
+      <!-- Step 2: Profil -->
+      <div class="onboarding__step hidden" id="onboarding-step-2">
+        <div class="onboarding__emoji" aria-hidden="true">👤</div>
+        <h2>Jak ti máme říkat?</h2>
+        <p>Zvol si přezdívku a avatar – ostatní tě podle toho poznají.</p>
+        <div class="form-group">
+          <label for="onboarding-nickname" class="form-label">Přezdívka <span class="required" aria-label="povinné">*</span></label>
+          <input id="onboarding-nickname" type="text" class="form-input" placeholder="Tvoje přezdívka"
+            maxlength="20" autocomplete="nickname" required />
+          <p class="form-hint">Max 20 znaků, bude vidět ostatním</p>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Avatar emoji (volitelné)</label>
+          <div class="avatar-picker" id="avatar-picker" role="listbox" aria-label="Výběr avataru">
+            <!-- JS vygeneruje -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 3: Wishlist -->
+      <div class="onboarding__step hidden" id="onboarding-step-3">
+        <div class="onboarding__emoji" aria-hidden="true">⭐</div>
+        <h2>Skupinový Wishlist</h2>
+        <p>Přidávej nápady na aktivity, jídlo, místa. Ostatní je lajkují a co-signují. Nejlepší nápady se dostanou do itineráře.</p>
+        <ul class="onboarding__list">
+          <li>🍜 Jídlo, ⛩️ Kultura, 🌸 Příroda, 🛍️ Shopping…</li>
+          <li>👍 Lajky + ✋ "I já chci!"</li>
+          <li>🔴 Must-have, 🟡 Nice-to-have, 🟢 Pokud zbude čas</li>
+        </ul>
+      </div>
+
+      <!-- Step 4: Finance -->
+      <div class="onboarding__step hidden" id="onboarding-step-4">
+        <div class="onboarding__emoji" aria-hidden="true">💰</div>
+        <h2>Finance & Settle Up</h2>
+        <p>Sledujeme společné výdaje a automaticky vypočítáme, kdo komu dluží. Podpora JPY i CZK s live kurzem.</p>
+        <ul class="onboarding__list">
+          <li>📊 Nastav si budget v CZK</li>
+          <li>💳 Zaznamenávej výdaje (kdo platil, za koho)</li>
+          <li>🤝 Settle Up ti řekne, jak to vyrovnat</li>
+        </ul>
+      </div>
+
+      <!-- Step 5: Fáze -->
+      <div class="onboarding__step hidden" id="onboarding-step-5">
+        <div class="onboarding__emoji" aria-hidden="true">📅</div>
+        <h2>Dvě fáze aplikace</h2>
+        <div class="onboarding__phases">
+          <div class="onboarding__phase">
+            <strong>Fáze 1 – Plánování</strong>
+            <span>do 22. 7. 2026</span>
+            <p>Sbíráme nápady a přání na wishlist</p>
+          </div>
+          <div class="onboarding__phase onboarding__phase--future">
+            <strong>Fáze 2 – Realizace</strong>
+            <span>22. 7. – 20. 9. 2026</span>
+            <p>Itinerář, fotky, live sdílení</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Step 6: Jdeme na to -->
+      <div class="onboarding__step hidden" id="onboarding-step-6">
+        <div class="onboarding__emoji" aria-hidden="true">🚀</div>
+        <h2>Jdeme na to!</h2>
+        <p>Aplikace je připravena. Začni přidáváním nápadů na Wishlist – do odletu zbývá…</p>
+        <div class="onboarding__countdown" id="onboarding-countdown" aria-live="polite"></div>
+      </div>
+
+      <div class="onboarding__footer">
+        <button class="btn btn--ghost" id="onboarding-prev" disabled aria-label="Předchozí krok">← Zpět</button>
+        <span class="onboarding__step-indicator" id="onboarding-step-indicator" aria-live="polite">1 / 6</span>
+        <button class="btn btn--primary" id="onboarding-next" aria-label="Další krok">Dál →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       MAIN APP SHELL
+  ======================================================== -->
+  <div id="app" class="app hidden" role="application" aria-label="Japan Trip 2026">
+
+    <!-- TOP HEADER -->
+    <header class="app-header" role="banner">
+      <div class="app-header__left">
+        <button class="btn-icon btn-icon--menu" id="btn-sidebar-toggle"
+          aria-label="Otevřít navigaci" aria-expanded="false" aria-controls="sidebar">
+          <span class="hamburger" aria-hidden="true"></span>
+        </button>
+        <a href="#dashboard" class="app-header__logo" aria-label="Dashboard – Japan Trip 2026">
+          <span aria-hidden="true">⛩️</span>
+          <span class="app-header__logo-text">Japan 2026</span>
+        </a>
+      </div>
+
+      <div class="app-header__center" id="page-title" aria-live="polite">Dashboard</div>
+
+      <div class="app-header__right">
+        <!-- Phase badge -->
+        <div class="phase-badge" id="phase-badge" aria-label="Aktuální fáze aplikace">
+          <span id="phase-badge-text">Fáze 1</span>
+        </div>
+        <!-- Theme toggle -->
+        <button class="btn-icon" id="btn-theme-toggle" aria-label="Přepnout tmavý/světlý režim">
+          <span id="theme-icon" aria-hidden="true">🌙</span>
+        </button>
+        <!-- User avatar -->
+        <button class="btn-avatar" id="btn-user-menu"
+          aria-label="Uživatelský profil" aria-haspopup="true" aria-expanded="false">
+          <span id="header-avatar" class="avatar" aria-hidden="true">?</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- USER DROPDOWN -->
+    <div id="user-dropdown" class="user-dropdown hidden" role="menu" aria-label="Uživatelské menu">
+      <div class="user-dropdown__info">
+        <span id="dropdown-avatar" class="avatar avatar--lg" aria-hidden="true"></span>
+        <div>
+          <strong id="dropdown-nickname"></strong>
+          <small id="dropdown-email"></small>
+        </div>
+      </div>
+      <hr class="user-dropdown__sep" role="separator" />
+      <a href="#profile" class="user-dropdown__item" role="menuitem">👤 Můj profil</a>
+      <button class="user-dropdown__item" id="btn-logout" role="menuitem">🚪 Odhlásit se</button>
+    </div>
+
+    <!-- SIDEBAR (desktop) -->
+    <nav id="sidebar" class="sidebar" role="navigation" aria-label="Hlavní navigace">
+      <div class="sidebar__header">
+        <span aria-hidden="true">⛩️</span>
+        <span>Japan 2026</span>
+      </div>
+      <ul class="sidebar__nav" role="list" id="sidebar-nav">
+        <!-- JS doplní -->
+      </ul>
+      <div class="sidebar__footer">
+        <div class="sidebar__countdown" id="sidebar-countdown" aria-live="polite" aria-label="Odpočet do odletu"></div>
+      </div>
+    </nav>
+
+    <!-- SIDEBAR OVERLAY (mobile) -->
+    <div class="sidebar-overlay hidden" id="sidebar-overlay" aria-hidden="true"></div>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content" id="main-content" role="main" aria-live="polite">
+      <!-- Dynamicky plněno routerem -->
+    </main>
+
+    <!-- BOTTOM NAV (mobile) -->
+    <nav class="bottom-nav" id="bottom-nav" role="navigation" aria-label="Rychlá navigace">
+      <ul role="list" id="bottom-nav-list">
+        <!-- JS doplní -->
+      </ul>
+    </nav>
+
+  </div>
+
+  <!-- ========================================================
+       GLOBAL TOAST CONTAINER
+  ======================================================== -->
+  <div id="toast-container" class="toast-container" role="region" aria-live="polite" aria-label="Oznámení" aria-atomic="false"></div>
+
+  <!-- ========================================================
+       GLOBAL CONFIRM DIALOG
+  ======================================================== -->
+  <div id="confirm-dialog" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+    <div class="modal__backdrop" id="confirm-backdrop"></div>
+    <div class="modal__content modal__content--sm">
+      <h3 id="confirm-title" class="modal__title">Potvrdit akci</h3>
+      <p id="confirm-message" class="modal__body"></p>
+      <div class="modal__footer">
+        <button class="btn btn--ghost" id="confirm-cancel">Zrušit</button>
+        <button class="btn btn--danger" id="confirm-ok">Potvrdit</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================
+       SCRIPTS
+  ======================================================== -->
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV/XN/WLs=" crossorigin=""></script>
+
+  <!-- App entry point -->
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
