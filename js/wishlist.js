@@ -226,7 +226,7 @@ function buildShell() {
     .join('');
 
   return `
-    <div class="page page--wide">
+    <div class="page page--wide page--enter">
       <div class="page-header wishlist-page-header">
         <div>
           <h1 class="page-header__title">⭐ Skupinový Wishlist</h1>
@@ -642,8 +642,61 @@ function renderGrid() {
     ? ideas.map((idea, i) => buildIdeaCard(idea, i + 1)).join('')
     : buildEmptyState();
 
+  setupSwipeGestures(ideas);
+
   // Synchronizuj markery na mapě s filtrovanými nápady
   syncMarkers(ideas);
+}
+
+function setupSwipeGestures(ideas) {
+  if (!_container) return;
+  const cards = _container.querySelectorAll('.idea-card[data-id]');
+
+  cards.forEach(card => {
+    let startX = 0, currentX = 0, isDragging = false;
+
+    card.addEventListener('touchstart', (e) => {
+      startX     = e.touches[0].clientX;
+      isDragging = true;
+      card.style.transition = 'none';
+    }, { passive: true });
+
+    card.addEventListener('touchmove', (e) => {
+      if (!isDragging) return;
+      currentX    = e.touches[0].clientX;
+      const diff  = currentX - startX;
+      if (Math.abs(diff) > 10) {
+        card.style.transform = `translateX(${diff}px)`;
+        if (diff > 0) {
+          card.style.background = `linear-gradient(90deg, rgba(34,197,94,${Math.min(diff/200, 0.25)}) 0%, transparent 100%)`;
+        } else {
+          card.style.background = `linear-gradient(270deg, rgba(239,68,68,${Math.min(-diff/200, 0.25)}) 0%, transparent 100%)`;
+        }
+      }
+    }, { passive: true });
+
+    card.addEventListener('touchend', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      const diff  = currentX - startX;
+
+      card.style.transition = 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), background 300ms ease';
+      card.style.transform  = '';
+      card.style.background = '';
+
+      const ideaId = card.dataset.id;
+      if (!ideaId) return;
+
+      if (diff > 100) {
+        toggleLike(ideaId);
+      } else if (diff < -100) {
+        const idea = ideas.find(i => i.id === ideaId);
+        if (idea?.authorUid === state.user?.uid || state.isAdmin) {
+          confirmDelete(ideaId);
+        }
+      }
+    });
+  });
 }
 
 function pluralIdeas(n) {

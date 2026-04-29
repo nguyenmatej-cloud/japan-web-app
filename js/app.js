@@ -44,7 +44,7 @@ const BOTTOM_NAV = [
   { route: 'wishlist',   label: 'Wishlist', emoji: '⭐' },
   { route: 'itinerary',  label: 'Itinerář', emoji: '📅' },
   { route: 'todos',      label: 'Úkoly',    emoji: '✅' },
-  { route: 'finance',    label: 'Finance',  emoji: '💰' },
+  { route: 'more',       label: 'Více',     emoji: '⋯', isMore: true },
 ];
 
 /* ── Sdílený stav (exportován pro moduly) ────────────────────── */
@@ -77,6 +77,7 @@ let _confirmResolve = null;
 async function init() {
   initTheme();
   setupGlobalEventListeners();
+  setupPullToRefresh();
 
   // Redirect result (iOS Google Sign-In po přesměrování)
   await checkRedirectResult().catch(() => null);
@@ -233,12 +234,20 @@ function buildBottomNav() {
 
   ul.innerHTML = BOTTOM_NAV.map(item => `
     <li>
-      <a href="#${item.route}" class="bottom-nav__item" data-route="${item.route}">
+      <a href="${item.isMore ? '#' : `#${item.route}`}"
+         class="bottom-nav__item${item.isMore ? ' bottom-nav__item--more' : ''}"
+         data-route="${item.route}"
+         ${item.isMore ? 'data-action="open-more"' : ''}>
         <span class="nav-emoji" aria-hidden="true">${item.emoji}</span>
         <span>${item.label}</span>
       </a>
     </li>
   `).join('');
+
+  ul.querySelector('[data-action="open-more"]')?.addEventListener('click', (e) => {
+    e.preventDefault();
+    openMoreSheet();
+  });
 }
 
 /* ── User display ────────────────────────────────────────────── */
@@ -569,6 +578,14 @@ function setupGlobalEventListeners() {
     _confirmResolve = null;
   });
 
+  /* More sheet backdrop */
+  document.getElementById('more-sheet-backdrop')?.addEventListener('click', closeMoreSheet);
+
+  /* More sheet nav items – zavři při navigaci */
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('#more-sheet .sheet-nav-item')) closeMoreSheet();
+  });
+
   /* ESC klávesa */
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
@@ -576,12 +593,123 @@ function setupGlobalEventListeners() {
     dropdown?.classList.add('hidden');
     // Zavři sidebar
     if (sidebar?.classList.contains('open')) toggleSidebar(false);
+    // Zavři more sheet
+    const moreSheet = document.getElementById('more-sheet');
+    if (!moreSheet?.classList.contains('hidden')) closeMoreSheet();
     // Zavři confirm dialog
     const dialog = document.getElementById('confirm-dialog');
     if (!dialog?.classList.contains('hidden')) {
       dialog.classList.add('hidden');
       _confirmResolve?.(false);
       _confirmResolve = null;
+    }
+  });
+}
+
+/* ════════════════════════════════════════════════════════════
+   BOTTOM SHEET "VÍCE"
+   ════════════════════════════════════════════════════════════ */
+
+function openMoreSheet() {
+  const sheet    = document.getElementById('more-sheet');
+  const backdrop = document.getElementById('more-sheet-backdrop');
+  if (!sheet || !backdrop) return;
+
+  backdrop.classList.remove('hidden');
+  sheet.classList.remove('hidden');
+  requestAnimationFrame(() => {
+    backdrop.classList.add('open');
+    sheet.classList.add('open');
+  });
+  document.body.style.overflow = 'hidden';
+  setupSheetSwipe(sheet);
+}
+
+function closeMoreSheet() {
+  const sheet    = document.getElementById('more-sheet');
+  const backdrop = document.getElementById('more-sheet-backdrop');
+  if (!sheet || !backdrop) return;
+
+  sheet.classList.remove('open');
+  backdrop.classList.remove('open');
+  setTimeout(() => {
+    sheet.classList.add('hidden');
+    backdrop.classList.add('hidden');
+  }, 350);
+  document.body.style.overflow = '';
+}
+
+function setupSheetSwipe(sheet) {
+  let startY = 0, currentY = 0, isDragging = false;
+
+  const onStart = (e) => {
+    startY     = e.touches ? e.touches[0].clientY : e.clientY;
+    isDragging = true;
+    sheet.style.transition = 'none';
+  };
+
+  const onMove = (e) => {
+    if (!isDragging) return;
+    currentY   = e.touches ? e.touches[0].clientY : e.clientY;
+    const diff = currentY - startY;
+    if (diff > 0) sheet.style.transform = `translateY(${diff}px)`;
+  };
+
+  const onEnd = () => {
+    if (!isDragging) return;
+    isDragging = false;
+    sheet.style.transition = '';
+    sheet.style.transform  = '';
+    if (currentY - startY > 100) closeMoreSheet();
+  };
+
+  const handle = sheet.querySelector('.bottom-sheet__handle');
+  handle?.addEventListener('touchstart', onStart, { passive: true });
+  handle?.addEventListener('touchmove',  onMove,  { passive: true });
+  handle?.addEventListener('touchend',   onEnd);
+}
+
+/* ════════════════════════════════════════════════════════════
+   PULL-TO-REFRESH
+   ════════════════════════════════════════════════════════════ */
+
+function setupPullToRefresh() {
+  let startY = 0, currentY = 0, isPulling = false;
+  const indicator = document.getElementById('ptr-indicator');
+  const main      = document.getElementById('main-content');
+  if (!indicator || !main) return;
+
+  document.addEventListener('touchstart', (e) => {
+    if (window.scrollY === 0 && main.scrollTop === 0) {
+      startY    = e.touches[0].clientY;
+      isPulling = true;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchmove', (e) => {
+    if (!isPulling) return;
+    currentY    = e.touches[0].clientY;
+    const diff  = currentY - startY;
+    if (diff > 0 && diff < 150) {
+      indicator.style.transform = `translateX(-50%) translateY(${diff + 60}px)`;
+      indicator.style.opacity   = String(Math.min(diff / 80, 1));
+      indicator.querySelector('.ptr-spinner').style.transform = `rotate(${(diff / 80) * 360}deg)`;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    if (!isPulling) return;
+    isPulling = false;
+    const diff = currentY - startY;
+
+    if (diff > 80) {
+      indicator.classList.add('ptr-refreshing');
+      setTimeout(() => location.reload(), 600);
+    } else {
+      indicator.style.transition = 'transform 300ms ease, opacity 300ms ease';
+      indicator.style.transform  = 'translateX(-50%) translateY(0)';
+      indicator.style.opacity    = '0';
+      setTimeout(() => { indicator.style.transition = ''; }, 300);
     }
   });
 }

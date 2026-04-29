@@ -8,7 +8,8 @@
   <meta name="theme-color" content="#18181B" media="(prefers-color-scheme: dark)" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="JT26" />
+  <link rel="apple-touch-icon" href="icon-192.svg" />
   <link rel="manifest" href="manifest.json" />
   <title>🇯🇵 Japan Trip 2026</title>
 
@@ -275,6 +276,50 @@
         <button class="btn btn--danger" id="confirm-ok">Potvrdit</button>
       </div>
     </div>
+  </div>
+
+  <!-- Pull-to-refresh indicator -->
+  <div id="ptr-indicator" class="ptr-indicator" aria-hidden="true">
+    <span class="ptr-spinner">⛩️</span>
+  </div>
+
+  <!-- Bottom Sheet "Více" menu -->
+  <div id="more-sheet-backdrop" class="sheet-backdrop hidden" aria-hidden="true"></div>
+  <div id="more-sheet" class="bottom-sheet hidden" role="dialog" aria-modal="true" aria-label="Více možností">
+    <div class="bottom-sheet__handle" aria-hidden="true"></div>
+    <div class="bottom-sheet__header">
+      <h2 class="bottom-sheet__title">Více možností</h2>
+    </div>
+    <nav class="bottom-sheet__nav">
+      <a href="#finance" class="sheet-nav-item" data-route="finance">
+        <span class="sheet-nav-item__emoji">💰</span>
+        <span class="sheet-nav-item__label">Finance</span>
+      </a>
+      <a href="#photos" class="sheet-nav-item" data-route="photos">
+        <span class="sheet-nav-item__emoji">📸</span>
+        <span class="sheet-nav-item__label">Fotky</span>
+      </a>
+      <a href="#chat" class="sheet-nav-item" data-route="chat">
+        <span class="sheet-nav-item__emoji">💬</span>
+        <span class="sheet-nav-item__label">Chat</span>
+      </a>
+      <a href="#japan-utils" class="sheet-nav-item" data-route="japan-utils">
+        <span class="sheet-nav-item__emoji">🗾</span>
+        <span class="sheet-nav-item__label">Japonsko info</span>
+      </a>
+      <a href="#members" class="sheet-nav-item" data-route="members">
+        <span class="sheet-nav-item__emoji">👥</span>
+        <span class="sheet-nav-item__label">Členové</span>
+      </a>
+      <a href="#profile" class="sheet-nav-item" data-route="profile">
+        <span class="sheet-nav-item__emoji">👤</span>
+        <span class="sheet-nav-item__label">Profil</span>
+      </a>
+      <a href="#admin" class="sheet-nav-item admin-only hidden" data-route="admin">
+        <span class="sheet-nav-item__emoji">⚙️</span>
+        <span class="sheet-nav-item__label">Admin</span>
+      </a>
+    </nav>
   </div>
 
   <!-- ========================================================

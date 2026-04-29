@@ -1,7 +1,7 @@
 /** japan-utils.js – Japonsko Info. Bude implementován v kroku 5. */
 export function render(container) {
   container.innerHTML = `
-    <div class="page">
+    <div class="page page--enter">
       <div class="page-header">
         <h1 class="page-header__title">🗾 Japonsko Info</h1>
         <p class="page-header__subtitle">Kurz JPY/CZK, fráze, Tokyo čas a tipy</p>

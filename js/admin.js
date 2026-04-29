@@ -4,7 +4,7 @@ import { state } from './app.js';
 export function render(container) {
   if (!state.isAdmin) {
     container.innerHTML = `
-      <div class="page">
+      <div class="page page--enter">
         <div class="empty-state">
           <span class="empty-state__icon" aria-hidden="true">🚫</span>
           <h2 class="empty-state__title">Přístup zamítnut</h2>
@@ -15,7 +15,7 @@ export function render(container) {
   }
 
   container.innerHTML = `
-    <div class="page">
+    <div class="page page--enter">
       <div class="page-header">
         <h1 class="page-header__title">⚙️ Admin Panel</h1>
         <p class="page-header__subtitle">Správa aplikace a uživatelů</p>

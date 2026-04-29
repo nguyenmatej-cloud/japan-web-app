@@ -8,7 +8,7 @@ export function render(container) {
   const email    = user?.email       || '—';
 
   container.innerHTML = `
-    <div class="page" style="max-width:600px">
+    <div class="page page--enter" style="max-width:600px">
       <div class="page-header">
         <h1 class="page-header__title">👤 Profil</h1>
       </div>

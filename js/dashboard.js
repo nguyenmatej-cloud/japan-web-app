@@ -21,7 +21,7 @@ export function render(container) {
   const avatar     = state.profile?.avatar   || '😊';
 
   container.innerHTML = `
-    <div class="page" id="dashboard-page">
+    <div class="page page--enter" id="dashboard-page">
 
       <!-- Hlavní nadpis -->
       <div class="page-header">

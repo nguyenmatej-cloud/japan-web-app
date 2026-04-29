@@ -1,7 +1,7 @@
 /** photos.js – Google Photos integrace. Bude implementován v kroku 4. */
 export function render(container) {
   container.innerHTML = `
-    <div class="page">
+    <div class="page page--enter">
       <div class="page-header">
         <h1 class="page-header__title">📸 Fotky</h1>
         <p class="page-header__subtitle">Sdílené album skupiny z Japonska</p>

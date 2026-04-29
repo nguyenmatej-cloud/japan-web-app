@@ -84,7 +84,7 @@ function cleanup() {
 
 function buildShell() {
   return `
-    <div class="page">
+    <div class="page page--enter">
       <div class="page-header todos-page-header">
         <div>
           <h1 class="page-header__title">✅ Skupinové úkoly</h1>

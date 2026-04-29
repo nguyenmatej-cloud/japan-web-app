@@ -1,7 +1,7 @@
 /** itinerary.js – Itinerář / Kalendář. Bude implementován v kroku 4. */
 export function render(container) {
   container.innerHTML = `
-    <div class="page">
+    <div class="page page--enter">
       <div class="page-header">
         <h1 class="page-header__title">📅 Itinerář</h1>
         <p class="page-header__subtitle">14denní plán cesty (7.–20. 9. 2026)</p>
