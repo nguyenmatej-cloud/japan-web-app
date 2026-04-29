@@ -769,8 +769,23 @@ a {
   text-align: left;
 }
 
-.sidebar__nav-item::before {
+.sidebar__nav-item::before,
+.sidebar__nav-item::after {
   display: none !important;
+  content: none !important;
+}
+
+.sidebar__nav-item,
+.sidebar__nav-item:hover,
+.sidebar__nav-item:focus,
+.sidebar__nav-item:active,
+.sidebar__nav-item.active {
+  text-decoration: none !important;
+}
+
+.sidebar__nav-item span,
+.sidebar__nav-item:hover span {
+  text-decoration: none !important;
 }
 
 .sidebar__nav-item .nav-emoji {
