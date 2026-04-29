@@ -8,6 +8,8 @@ import {
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
   signOut as fbSignOut,
   onAuthStateChanged,
 } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js';
@@ -23,23 +25,31 @@ import {
 const provider = new GoogleAuthProvider();
 provider.setCustomParameters({ prompt: 'select_account' });
 
+// Zajistí persistenci přihlášení i po redirect flow (nutné pro iOS Safari)
+setPersistence(auth, browserLocalPersistence).catch(err => {
+  console.warn('[auth] Persistence nastavení selhalo:', err);
+});
+
 /* ── Detekce iOS Safari (signInWithRedirect jako fallback) ── */
 
-function isIOS() {
-  return (
-    /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-  );
+function isIOSSafari() {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPad Pro
+  const isSafari = /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+  return isIOS && isSafari;
 }
 
 /* ── Sign-in ─────────────────────────────────────────────── */
 
 export async function signInWithGoogle() {
-  if (isIOS()) {
-    // iOS Safari blokuje popupy → použij redirect
+  if (isIOSSafari()) {
+    // iOS Safari blokuje popupy (ITP) → použij redirect
+    console.log('[auth] iOS Safari detected, using redirect');
     return signInWithRedirect(auth, provider);
   }
   try {
+    console.log('[auth] Using popup');
     return await signInWithPopup(auth, provider);
   } catch (err) {
     if (
@@ -48,6 +58,7 @@ export async function signInWithGoogle() {
       err.code === 'auth/cancelled-popup-request'
     ) {
       // Popup blokován → fallback na redirect
+      console.log('[auth] Popup blocked, falling back to redirect');
       return signInWithRedirect(auth, provider);
     }
     throw err;
@@ -62,8 +73,10 @@ export async function checkRedirectResult() {
   try {
     return await getRedirectResult(auth);
   } catch (err) {
-    console.warn('[auth] getRedirectResult error:', err.code);
-    return null;
+    // auth/no-auth-event = normální stav, stránka nebyla otevřena přes redirect
+    if (err.code === 'auth/no-auth-event') return null;
+    console.error('[auth] getRedirectResult error:', err.code, err);
+    throw err; // app.js zachytí a zobrazí getAuthErrorMessage(err.code)
   }
 }
 
@@ -130,14 +143,20 @@ export async function updateLastLogin(uid) {
 
 export function getAuthErrorMessage(code) {
   const map = {
-    'auth/popup-closed-by-user':   'Přihlášení bylo zrušeno.',
-    'auth/cancelled-popup-request':'Přihlášení bylo zrušeno.',
-    'auth/popup-blocked':          'Prohlížeč zablokoval popup. Zkusíme přesměrování…',
-    'auth/network-request-failed': 'Chyba sítě. Zkontroluj připojení k internetu.',
-    'auth/too-many-requests':      'Příliš mnoho pokusů o přihlášení. Zkus to za chvíli.',
-    'auth/user-disabled':          'Tento Google účet byl zablokován.',
+    'auth/popup-closed-by-user':    'Přihlášení bylo zrušeno.',
+    'auth/cancelled-popup-request': 'Přihlášení bylo zrušeno.',
+    'auth/popup-blocked':           'Prohlížeč zablokoval popup. Zkusíme přesměrování…',
+    'auth/network-request-failed':  'Chyba sítě. Zkontroluj připojení k internetu.',
+    'auth/too-many-requests':       'Příliš mnoho pokusů o přihlášení. Zkus to za chvíli.',
+    'auth/user-disabled':           'Tento Google účet byl zablokován.',
     'auth/account-exists-with-different-credential':
-      'Účet s tímto emailem již existuje s jiným způsobem přihlášení.',
+      'Tento email je už spojen s jiným způsobem přihlášení.',
+    'auth/credential-already-in-use':
+      'Tento účet je už použit.',
+    'auth/redirect-cancelled-by-user':
+      'Přihlášení přes přesměrování bylo zrušeno.',
+    'auth/web-storage-unsupported':
+      'Prohlížeč blokuje úložiště. Povol cookies a zkus znovu.',
   };
   return map[code] ?? 'Chyba při přihlašování. Zkus to znovu.';
 }
