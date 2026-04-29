@@ -3017,3 +3017,439 @@ h1, h2, h3, h4, h5, h6 {
 [data-theme="dark"] .location-picker__suggestion:hover {
   background: var(--bg-surface-2);
 }
+
+/* ══════════════════════════════════════════════════════════════
+   39. Todos
+   ══════════════════════════════════════════════════════════════ */
+
+.todos-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.todos-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-4);
+}
+
+.todo-status-filters {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.todo-filter-btn {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: transparent;
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.todo-filter-btn:hover {
+  background: var(--bg-surface-2);
+  color: var(--text);
+}
+
+.todo-filter-btn--active {
+  background: var(--color-indigo);
+  border-color: var(--color-indigo);
+  color: white;
+}
+
+.todo-filter-user {
+  min-width: 160px;
+}
+
+/* Todo list */
+.todo-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Todo card */
+.todo-card {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  transition: opacity var(--transition-normal);
+}
+
+.todo-card--done {
+  opacity: .6;
+}
+
+.todo-card--done .todo-card__title {
+  text-decoration: line-through;
+  color: var(--text-muted);
+}
+
+.todo-check {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  font-size: 1.375rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  transition: transform var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+  margin-top: 2px;
+}
+
+.todo-check:hover {
+  transform: scale(1.15);
+}
+
+.todo-card__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.todo-card__header-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.todo-card__title {
+  font-size: .9375rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.35;
+  flex: 1;
+  min-width: 0;
+}
+
+.todo-card__desc {
+  font-size: .8375rem;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.todo-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.todo-meta-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--bg-surface-2);
+  color: var(--text-secondary);
+  font-size: .75rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.todo-meta-chip--muted {
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+}
+
+.todo-meta-chip--overdue {
+  background: #FEF2F2;
+  color: var(--color-danger);
+  border: 1px solid #FECACA;
+}
+
+[data-theme="dark"] .todo-meta-chip--overdue {
+  background: #450A0A;
+  border-color: #7F1D1D;
+}
+
+.todo-card__actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   40. Finance
+   ══════════════════════════════════════════════════════════════ */
+
+/* Tabs */
+.finance-tabs {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  border-bottom: 2px solid var(--border);
+  padding-bottom: 0;
+}
+
+.finance-tab {
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-size: .9375rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.finance-tab:hover {
+  color: var(--text);
+}
+
+.finance-tab--active {
+  color: var(--color-indigo);
+  border-bottom-color: var(--color-indigo);
+}
+
+/* Summary */
+.fin-summary {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  margin-bottom: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+
+.fin-summary-grid {
+  display: flex;
+  gap: var(--space-6);
+  flex-wrap: wrap;
+}
+
+.fin-summary-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fin-summary-label {
+  font-size: .775rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.fin-summary-value {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* Expense list */
+.fin-expense-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* Expense card */
+.expense-card {
+  padding: var(--space-4);
+}
+
+.expense-card--mine {
+  border-left: 3px solid var(--color-indigo);
+}
+
+.expense-card__main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+}
+
+.expense-card__info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.expense-card__title {
+  font-size: .9375rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.expense-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.expense-card__amounts {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.expense-amount {
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.expense-share {
+  font-size: .775rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.expense-card__del {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-2);
+}
+
+/* Split checkboxes */
+.fin-split-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.fin-split-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  cursor: pointer;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-fast);
+}
+
+.fin-split-label:hover {
+  background: var(--bg-surface-2);
+}
+
+.fin-split-cb {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--color-indigo);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.fin-split-member {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: .9rem;
+  font-weight: 500;
+}
+
+/* Settle Up */
+.settle-section {
+  margin-bottom: var(--space-6);
+}
+
+.settle-section-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: var(--space-3);
+  font-family: var(--font-body);
+}
+
+.balance-list,
+.settle-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.balance-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.balance-avatar { font-size: 1.375rem; line-height: 1; flex-shrink: 0; }
+
+.balance-name {
+  flex: 1;
+  font-weight: 600;
+  font-size: .9375rem;
+}
+
+.balance-amount {
+  font-weight: 700;
+  font-size: .875rem;
+  white-space: nowrap;
+}
+
+.balance--positive { color: var(--color-success); }
+.balance--negative { color: var(--color-danger);  }
+
+.settle-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  flex-wrap: wrap;
+}
+
+.settle-from,
+.settle-to {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: .9rem;
+}
+
+.settle-arrow {
+  color: var(--text-muted);
+  font-size: 1.125rem;
+  flex-shrink: 0;
+}
+
+.settle-amount {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: .9375rem;
+  color: var(--color-indigo);
+  white-space: nowrap;
+}
+
+.settle-all-good {
+  color: var(--text-secondary);
+  font-size: .9375rem;
+  padding: var(--space-4);
+  text-align: center;
+}
