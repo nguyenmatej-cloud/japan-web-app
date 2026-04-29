@@ -451,6 +451,7 @@ function applyTheme(theme) {
   const icon = theme === 'dark' ? '☀️' : '🌙';
   const iconEl = document.getElementById('theme-icon');
   if (iconEl) iconEl.textContent = icon;
+  window.dispatchEvent(new CustomEvent('themechange'));
 }
 
 function toggleTheme() {

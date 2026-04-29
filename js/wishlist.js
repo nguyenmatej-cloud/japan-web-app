@@ -73,6 +73,10 @@ let _pickerMap      = null;
 let _pickerMarker   = null;
 let _pickerLocation = null; // { name, lat, lng } | null
 
+// Tile layers (pro theme switch)
+let _mapTileLayer    = null;
+let _pickerTileLayer = null;
+
 /* ════════════════════════════════════════════════════════════
    RENDER (entry point)
    ════════════════════════════════════════════════════════════ */
@@ -824,6 +828,11 @@ async function confirmDelete(ideaId) {
    MAPA
    ════════════════════════════════════════════════════════════ */
 
+const _isDarkTheme  = () => document.documentElement.getAttribute('data-theme') === 'dark';
+const _getMapTileUrl = () => _isDarkTheme()
+  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+  : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+
 function initMap() {
   if (!window.L) {
     console.warn('[wishlist] Leaflet není načten');
@@ -838,9 +847,11 @@ function initMap() {
     zoomControl: true,
   });
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>',
+  _mapTileLayer = L.tileLayer(_getMapTileUrl(), {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
     maxZoom: 19,
+    minZoom: 4,
   }).addTo(_map);
 }
 
@@ -1116,8 +1127,11 @@ function initPickerMap() {
     attributionControl: false,
   });
 
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  _pickerTileLayer = L.tileLayer(_getMapTileUrl(), {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+    subdomains: 'abcd',
     maxZoom: 19,
+    minZoom: 2,
   }).addTo(_pickerMap);
 
   // Klik na mapu → přidej/přesuň pin
@@ -1590,3 +1604,13 @@ function fmtTime(date) {
   if (diff < 7 * 86_400_000)  return `před ${Math.floor(diff / 86_400_000)} dny`;
   return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
 }
+
+/* ── Theme change listener ───────────────────────────────────── */
+window.addEventListener('themechange', () => {
+  if (_mapTileLayer && _map) {
+    _mapTileLayer.setUrl(_getMapTileUrl());
+  }
+  if (_pickerTileLayer && _pickerMap) {
+    _pickerTileLayer.setUrl(_getMapTileUrl());
+  }
+});
