@@ -5,7 +5,7 @@
 import { db } from './firebase-config.js';
 import { state } from './app.js';
 import {
-  collection, getDocs,
+  collection, getDocs, query, orderBy, limit, onSnapshot,
 } from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js';
 
 const DEPARTURE         = new Date('2026-09-07T00:00:00+02:00');
@@ -88,20 +88,15 @@ export function render(container) {
         </div>
       </div>
 
-      <!-- Aktivity feed placeholder -->
-      <div class="card">
+      <!-- Aktivity feed -->
+      <div class="card" style="margin-bottom:16px">
         <div class="card__header">
           <span class="card__title">📰 Poslední aktivita</span>
         </div>
-        <div class="empty-state" style="padding:32px 16px">
-          <span class="empty-state__icon" aria-hidden="true">🌸</span>
-          <h3 class="empty-state__title">Zatím žádná aktivita</h3>
-          <p class="empty-state__desc">
-            Jakmile začnete přidávat nápady, úkoly nebo výdaje, uvidíš tady přehled poslední aktivity skupiny.
-          </p>
-          <a href="#wishlist" class="btn btn--primary" style="margin-top:8px">
-            ⭐ Přidat první nápad
-          </a>
+        <div id="activity-feed" class="activity-feed">
+          <div class="skeleton skeleton--card" style="height:60px;margin-bottom:8px"></div>
+          <div class="skeleton skeleton--card" style="height:60px;margin-bottom:8px"></div>
+          <div class="skeleton skeleton--card" style="height:60px"></div>
         </div>
       </div>
 
@@ -131,8 +126,12 @@ export function render(container) {
 
   loadMembersSection().catch(err => console.error('[dashboard] loadMembers:', err));
 
+  // Real-time activity feed + stats
+  const unsubFns = setupActivityFeed();
+
   return () => {
     clearInterval(intervalId);
+    unsubFns.forEach(fn => fn?.());  // unsubscribe všechny listenery
     _container = null;
   };
 }
@@ -294,6 +293,169 @@ function esc(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/* ════════════════════════════════════════════════════════════
+   ACTIVITY FEED + REAL-TIME STATS
+   ════════════════════════════════════════════════════════════ */
+
+let _activityCache = {
+  ideas:    [],
+  expenses: [],
+  todos:    [],
+};
+let _usersMap = {}; // uid → user data (pro avatary, nicknames)
+
+function setupActivityFeed() {
+  const unsubFns = [];
+
+  // Načti users mapu (pro avatary v activity feedu)
+  getDocs(collection(db, 'users')).then(snap => {
+    snap.docs.forEach(d => { _usersMap[d.id] = d.data(); });
+    renderActivityFeed();
+  }).catch(err => console.error('[dashboard] users load:', err));
+
+  // Real-time listeners pro 3 kolekce
+  unsubFns.push(listenToCollection('ideas',    10));
+  unsubFns.push(listenToCollection('expenses', 10));
+  unsubFns.push(listenToCollection('todos',    10));
+
+  return unsubFns;
+}
+
+function listenToCollection(collName, maxItems) {
+  try {
+    const q = query(
+      collection(db, collName),
+      orderBy('createdAt', 'desc'),
+      limit(maxItems)
+    );
+
+    return onSnapshot(q, snap => {
+      _activityCache[collName] = snap.docs.map(d => ({
+        id:   d.id,
+        type: collName,
+        ...d.data(),
+      }));
+
+      renderActivityFeed();
+      updateQuickStats();
+    }, err => {
+      console.error(`[dashboard] ${collName} listener error:`, err);
+    });
+  } catch (err) {
+    console.error(`[dashboard] Failed to setup ${collName} listener:`, err);
+    return null;
+  }
+}
+
+function renderActivityFeed() {
+  if (!_container) return;
+  const feedEl = _container.querySelector('#activity-feed');
+  if (!feedEl) return;
+
+  const allActivities = [
+    ..._activityCache.ideas,
+    ..._activityCache.expenses,
+    ..._activityCache.todos,
+  ].filter(item => item.createdAt)
+   .sort((a, b) => {
+     const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+     const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+     return tB - tA;
+   })
+   .slice(0, 10);
+
+  if (allActivities.length === 0) {
+    feedEl.innerHTML = `
+      <div class="empty-state" style="padding:24px 16px;text-align:center">
+        <span class="empty-state__icon" aria-hidden="true" style="font-size:2rem">🌸</span>
+        <h3 style="margin-top:8px;font-size:1rem">Zatím žádná aktivita</h3>
+        <p style="color:var(--text-secondary);font-size:.875rem">
+          Buď první! Přidej nápad, úkol nebo výdaj.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  feedEl.innerHTML = allActivities.map(buildActivityItem).join('');
+}
+
+function buildActivityItem(item) {
+  const author   = _usersMap[getAuthorUid(item)] || {};
+  const avatar   = author.avatar   || item.authorAvatar   || '😊';
+  const nickname = author.nickname || item.authorNickname || 'Někdo';
+
+  const { icon, action, target } = describeActivity(item);
+  const time = formatRelativeTime(item.createdAt);
+
+  return `
+    <div class="activity-item">
+      <div class="activity-item__avatar" aria-hidden="true">${esc(avatar)}</div>
+      <div class="activity-item__content">
+        <div class="activity-item__text">
+          <span class="activity-item__author">${esc(nickname)}</span>
+          <span class="activity-item__action">${action}</span>
+          <span class="activity-item__icon">${icon}</span>
+          <span class="activity-item__target">&ldquo;${esc(target)}&rdquo;</span>
+        </div>
+        <div class="activity-item__time">${time}</div>
+      </div>
+    </div>
+  `;
+}
+
+function getAuthorUid(item) {
+  return item.authorUid || item.paidByUid || item.createdByUid || null;
+}
+
+function describeActivity(item) {
+  switch (item.type) {
+    case 'ideas':
+      return { icon: '⭐', action: 'přidal/a nápad', target: item.title || 'bez názvu' };
+    case 'expenses':
+      return {
+        icon:   '💰',
+        action: 'přidal/a výdaj',
+        target: item.description || `${item.amountJpy ?? item.amount ?? ''} JPY`,
+      };
+    case 'todos':
+      return {
+        icon:   item.done ? '✅' : '📝',
+        action: item.done ? 'splnil/a úkol' : 'přidal/a úkol',
+        target: item.title || 'bez názvu',
+      };
+    default:
+      return { icon: '📝', action: 'aktivita', target: '—' };
+  }
+}
+
+function formatRelativeTime(timestamp) {
+  if (!timestamp) return '';
+  const d    = timestamp.toDate ? timestamp.toDate() : new Date(timestamp.seconds * 1000);
+  const diff = Date.now() - d.getTime();
+  if (diff < 60_000)          return 'právě teď';
+  if (diff < 3_600_000)       return `před ${Math.floor(diff / 60_000)} min`;
+  if (diff < 86_400_000)      return `před ${Math.floor(diff / 3_600_000)} h`;
+  if (diff < 7 * 86_400_000)  return `před ${Math.floor(diff / 86_400_000)} dny`;
+  return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
+}
+
+function updateQuickStats() {
+  if (!_container) return;
+
+  // Moje otevřené úkoly přiřazené mně (todos.js ukládá pole `done: boolean`)
+  const myUid    = state.user?.uid;
+  const myTodos  = _activityCache.todos.filter(t =>
+    t.assignedToUid === myUid && !t.done
+  );
+  const todosEl  = _container.querySelector('#stat-todos');
+  if (todosEl) todosEl.textContent = myTodos.length;
+
+  // Celkový počet výdajů (limit 10 z listeneru – zobraz přesný počet z cache)
+  const expensesEl = _container.querySelector('#stat-expenses');
+  if (expensesEl) expensesEl.textContent = _activityCache.expenses.length;
 }
 
 /* ════════════════════════════════════════════════════════════
