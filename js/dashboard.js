@@ -100,18 +100,6 @@ export function render(container) {
         </div>
       </div>
 
-      <!-- Naše parta – naplní se async -->
-      <div id="dashboard-members" class="members-card card" style="margin-top:var(--space-6)">
-        <div class="card__header">
-          <h2 class="card__title">👥 Naše parta</h2>
-        </div>
-        <div class="members-grid" id="members-grid">
-          <div class="skeleton skeleton--card" style="height:72px"></div>
-          <div class="skeleton skeleton--card" style="height:72px"></div>
-          <div class="skeleton skeleton--card" style="height:72px"></div>
-        </div>
-      </div>
-
     </div>
   `;
 
@@ -124,7 +112,7 @@ export function render(container) {
     if (planningEl) planningEl.textContent = renderCountdownShort(PLANNING_DEADLINE);
   }
 
-  loadMembersSection().catch(err => console.error('[dashboard] loadMembers:', err));
+  loadDashboardStats().catch(err => console.error('[dashboard] loadStats:', err));
 
   // Real-time activity feed + stats
   const unsubFns = setupActivityFeed();
@@ -137,162 +125,33 @@ export function render(container) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   MEMBERS SECTION
+   DASHBOARD STATS
    ════════════════════════════════════════════════════════════ */
 
-async function loadMembersSection() {
+async function loadDashboardStats() {
   if (!_container) return;
 
-  const [usersSnap, allowedSnap, ideasSnap] = await Promise.all([
-    getDocs(collection(db, 'users')),
-    getDocs(collection(db, 'allowed_users')),
-    getDocs(collection(db, 'ideas')),
-  ]);
+  try {
+    const [usersSnap, allowedSnap, ideasSnap] = await Promise.all([
+      getDocs(collection(db, 'users')),
+      getDocs(collection(db, 'allowed_users')),
+      getDocs(collection(db, 'ideas')),
+    ]);
 
-  if (!_container) return; // uživatel navigoval pryč
+    if (!_container) return;
 
-  const users   = usersSnap.docs.map(d => ({ uid: d.id, ...d.data() }));
-  const allowed = allowedSnap.docs.map(d => ({ email: d.id, ...d.data() }));
-  const ideas   = ideasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const userEmails  = new Set(usersSnap.docs.map(d => d.data().email?.toLowerCase().trim()));
+    const invitedOnly = allowedSnap.docs.filter(d => !userEmails.has(d.id.toLowerCase().trim()));
+    const totalMembers = usersSnap.size + invitedOnly.length;
 
-  // Mapa email → allowed_users data (pro role)
-  const allowedMap = {};
-  allowed.forEach(a => {
-    allowedMap[a.email?.toLowerCase().trim() ?? ''] = a;
-  });
+    const statMembersEl = _container.querySelector('#stat-members');
+    if (statMembersEl) statMembersEl.textContent = totalMembers;
 
-  // Přiřaď roli každému aktivnímu uživateli
-  users.forEach(u => {
-    const entry = allowedMap[u.email?.toLowerCase().trim() ?? ''];
-    u.role = entry?.role ?? null;
-  });
-
-  // Pozvaní, kteří se ještě nepřihlásili
-  const userEmails   = new Set(users.map(u => u.email?.toLowerCase().trim()));
-  const invitedOnly  = allowed.filter(a => !userEmails.has(a.email?.toLowerCase().trim()));
-
-  // Statistiky per uživatel
-  const statsMap = {};
-  users.forEach(u => { statsMap[u.uid] = { ideaCount: 0, likeCount: 0 }; });
-  ideas.forEach(idea => {
-    if (statsMap[idea.authorUid]) statsMap[idea.authorUid].ideaCount++;
-    (idea.likes ?? []).forEach(uid => {
-      if (statsMap[uid]) statsMap[uid].likeCount++;
-    });
-  });
-
-  // Aktualizuj stat-members
-  const totalMembers = users.length + invitedOnly.length;
-  const statMembersEl = _container.querySelector('#stat-members');
-  if (statMembersEl) statMembersEl.textContent = totalMembers;
-
-  // Aktualizuj stat-ideas
-  const statIdeasEl = _container.querySelector('#stat-ideas');
-  if (statIdeasEl) statIdeasEl.textContent = ideas.length;
-
-  renderMembersGrid(users, invitedOnly, statsMap, totalMembers);
-}
-
-function renderMembersGrid(users, invitedOnly, statsMap, totalCount) {
-  const headerEl = _container?.querySelector('#dashboard-members .card__title');
-  if (headerEl) headerEl.textContent = `👥 Naše parta (${totalCount})`;
-
-  const gridEl = _container?.querySelector('#members-grid');
-  if (!gridEl) return;
-
-  // Seřaď aktivní uživatele: admin první, pak podle nickname
-  const sorted = [...users].sort((a, b) => {
-    if (a.role === 'admin' && b.role !== 'admin') return -1;
-    if (b.role === 'admin' && a.role !== 'admin') return 1;
-    return (a.nickname ?? '').localeCompare(b.nickname ?? '', 'cs');
-  });
-
-  gridEl.innerHTML = [
-    ...sorted.map(u => buildMemberCard(u, statsMap[u.uid] ?? { ideaCount: 0, likeCount: 0 })),
-    ...invitedOnly.map(a => buildInvitedCard(a)),
-  ].join('');
-
-  // Event listeners – klik na aktivního člena → filtruj wishlist
-  gridEl.querySelectorAll('.member-card:not(.member-card--invited)').forEach(card => {
-    const nickname = card.dataset.nickname;
-    if (!nickname) return;
-    card.addEventListener('click', () => {
-      sessionStorage.setItem('wl_pending_author', nickname);
-      window.location.hash = '#wishlist';
-    });
-  });
-}
-
-function buildMemberCard(user, stats) {
-  const isOnline    = isRecentlyActive(user.lastLogin);
-  const statusStr   = isOnline
-    ? '🟢 online'
-    : formatLastActive(user.lastLogin);
-  const isMe        = user.uid === state.user?.uid;
-  const adminBadge  = user.role === 'admin'
-    ? `<span class="badge badge--admin">⭐ admin</span>`
-    : '';
-  const meBadge     = isMe
-    ? `<span class="badge badge--invited" style="background:rgba(79,70,229,.1);color:var(--color-indigo)">já</span>`
-    : '';
-
-  return `
-    <div class="member-card" data-uid="${esc(user.uid)}" data-nickname="${esc(user.nickname ?? '')}"
-         role="button" tabindex="0" aria-label="Zobrazit nápady od ${esc(user.nickname)}">
-      <div class="member-card__avatar" aria-hidden="true">${esc(user.avatar ?? '😊')}</div>
-      <div class="member-card__info">
-        <strong class="member-card__name">${esc(user.nickname ?? '—')}</strong>
-        <div style="display:flex;gap:4px;flex-wrap:wrap">${adminBadge}${meBadge}</div>
-        <div class="member-card__status">${statusStr}</div>
-      </div>
-      <div class="member-card__stats">
-        <span title="Nápady na wishlistu">⭐ ${stats.ideaCount}</span>
-        <span title="Lajky udělené nápadům">👍 ${stats.likeCount}</span>
-      </div>
-    </div>
-  `;
-}
-
-function buildInvitedCard(allowedEntry) {
-  const name = (allowedEntry.email ?? '').split('@')[0];
-  return `
-    <div class="member-card member-card--invited" aria-label="${esc(name)} – pozvaný člen">
-      <div class="member-card__avatar" aria-hidden="true">📨</div>
-      <div class="member-card__info">
-        <strong class="member-card__name">${esc(name)}</strong>
-        <span class="badge badge--invited">Pozván</span>
-        <div class="member-card__status">Ještě se nepřihlásil/a</div>
-      </div>
-    </div>
-  `;
-}
-
-/* ── Helpers ─────────────────────────────────────────────────── */
-
-function isRecentlyActive(lastLogin) {
-  if (!lastLogin) return false;
-  const d = lastLogin.toDate ? lastLogin.toDate() : new Date(lastLogin.seconds * 1000);
-  return Date.now() - d.getTime() < 5 * 60_000;
-}
-
-function formatLastActive(lastLogin) {
-  if (!lastLogin) return 'Nikdy online';
-  const d    = lastLogin.toDate ? lastLogin.toDate() : new Date(lastLogin.seconds * 1000);
-  const diff = Date.now() - d.getTime();
-  if (diff < 3_600_000)        return `před ${Math.floor(diff / 60_000)} min`;
-  if (diff < 86_400_000)       return `před ${Math.floor(diff / 3_600_000)} h`;
-  if (diff < 7 * 86_400_000)   return `před ${Math.floor(diff / 86_400_000)} dny`;
-  return d.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
-}
-
-function esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    const statIdeasEl = _container.querySelector('#stat-ideas');
+    if (statIdeasEl) statIdeasEl.textContent = ideasSnap.size;
+  } catch (err) {
+    console.error('[dashboard] loadStats:', err);
+  }
 }
 
 /* ════════════════════════════════════════════════════════════

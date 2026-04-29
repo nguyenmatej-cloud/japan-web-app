@@ -30,6 +30,7 @@ const AVATAR_OPTIONS = [
 const SIDEBAR_NAV = [
   { route: 'dashboard',   label: 'Dashboard',    emoji: '🏠' },
   { route: 'wishlist',    label: 'Wishlist',      emoji: '⭐' },
+  { route: 'members',     label: 'Členové',        emoji: '👥' },
   { route: 'itinerary',   label: 'Itinerář',      emoji: '📅' },
   { route: 'todos',       label: 'Úkoly',          emoji: '✅' },
   { route: 'finance',     label: 'Finance',        emoji: '💰' },
@@ -177,6 +178,7 @@ function showAppUI() {
       'photos':       () => import('./photos.js'),
       'chat':         () => import('./chat.js'),
       'japan-utils':  () => import('./japan-utils.js'),
+      'members':      () => import('./members.js'),
       'profile':      () => import('./profile.js'),
       'admin':        () => import('./admin.js'),
     });
