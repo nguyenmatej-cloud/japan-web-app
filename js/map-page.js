@@ -198,6 +198,7 @@ window._mapPageAddToWishlist = async (landmarkId) => {
   const catMap = {
     temple: 'culture', castle: 'culture', nature: 'nature',
     food: 'food', popculture: 'experience',
+    garden: 'nature', culture: 'culture', viewpoint: 'culture',
   };
 
   try {

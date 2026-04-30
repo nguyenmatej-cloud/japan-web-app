@@ -5242,3 +5242,39 @@ button, .btn, [role="button"] {
   .map-page { height: calc(100dvh - var(--header-height, 60px) - 80px); }
   .tip-marker__icon { font-size: 16px; }
 }
+
+/* ─── 57. Leaflet Popup Close Button ───────────────────────── */
+
+.leaflet-popup-close-button {
+  width: 28px !important;
+  height: 28px !important;
+  font-size: 20px !important;
+  line-height: 28px !important;
+  border-radius: 50% !important;
+  top: 8px !important;
+  right: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  transition: background 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              color 200ms cubic-bezier(0.34, 1.56, 0.64, 1),
+              transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1) !important;
+  background: rgba(0,0,0,.06) !important;
+  color: #3C3C43 !important;
+}
+
+.leaflet-popup-close-button:hover {
+  background: #FF453A !important;
+  color: white !important;
+  transform: scale(1.1) rotate(90deg) !important;
+}
+
+.leaflet-popup-content {
+  margin: 24px 16px 16px 16px !important;
+}
+
+/* Category-colored border on tip popups */
+.tip-popup .leaflet-popup-close-button {
+  border: 2px solid var(--cat-color, #0A84FF) !important;
+  background: white !important;
+}
