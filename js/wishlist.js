@@ -990,10 +990,13 @@ async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng, profile = 'foot') 
   }
 }
 
-function estimateTransitTime(distM) {
-  const WALK_MPS   = 1.2;
-  const TRANSIT_PENALTY = 300;
-  return (distM / WALK_MPS) + TRANSIT_PENALTY;
+function estimateTransitTime(distanceMeters, drivingSeconds) {
+  const distanceKm = distanceMeters / 1000;
+  if (distanceKm < 1)   return null;
+  if (distanceKm < 3)   return drivingSeconds * 0.70 + 300;
+  if (distanceKm < 10)  return drivingSeconds * 0.85 + 300;
+  if (distanceKm < 30)  return drivingSeconds * 0.75 + 600;
+  return drivingSeconds * 0.60 + 900;
 }
 
 function getIdeaCoords(idea) {
@@ -1049,29 +1052,30 @@ async function calculateAllDistances() {
           coords.lat, coords.lng
         );
 
-        let walk = null, walkMin = null, drive = null, driveMin = null;
+        let walk = null, walkMin = null, drive = null, driveMin = null, transitMin = null;
 
-        const [walkRoute, driveRoute] = await Promise.all([
-          fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, coords.lat, coords.lng, 'foot'),
-          straight > 2000
-            ? fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, coords.lat, coords.lng, 'driving')
-            : Promise.resolve(null),
-        ]);
-
-        if (walkRoute) {
-          walk    = walkRoute.distance;
-          walkMin = Math.round(walkRoute.duration / 60);
-        } else {
-          walk    = straight * 1.3;
-          walkMin = Math.round(estimateTransitTime(straight) / 60);
-        }
+        // Driving – OSRM (spolehlivé)
+        const driveRoute = straight > 2000
+          ? await fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, coords.lat, coords.lng, 'driving')
+          : null;
 
         if (driveRoute) {
           drive    = driveRoute.distance;
           driveMin = Math.round(driveRoute.duration / 60);
         }
 
-        _distanceData.set(idea.id, { straight, walk, walkMin, drive, driveMin });
+        // Walking – matematický odhad 4.5 km/h (OSRM foot na public demo není spolehlivé)
+        if (straight < 15000) {
+          const walkingDist = driveRoute ? driveRoute.distance : straight * 1.25;
+          walk    = walkingDist;
+          walkMin = Math.round((walkingDist / 1000) / 4.5 * 60);
+        }
+
+        // Transit – odhad pro Tokio
+        const transitSec = driveRoute ? estimateTransitTime(straight, driveRoute.duration) : null;
+        if (transitSec != null) transitMin = Math.round(transitSec / 60);
+
+        _distanceData.set(idea.id, { straight, walk, walkMin, drive, driveMin, transitMin });
 
         done++;
         if (btn) btn.textContent = `⏳ ${done} / ${total}`;
@@ -1116,16 +1120,26 @@ function renderDistanceInfo(ideaId) {
   const d = _distanceData.get(ideaId);
   if (!d) return '';
 
-  const walkStr  = formatDistance(d.walk);
-  const walkTime = formatDuration(d.walkMin);
-  const driveStr  = d.drive != null ? formatDistance(d.drive) : null;
-  const driveTime = d.driveMin != null ? formatDuration(d.driveMin) : null;
+  const items = [];
 
-  let html = `<div class="distance-info">`;
-  if (walkStr)  html += `<span class="distance-info__item">🚶 ${walkStr}${walkTime ? ` · ${walkTime}` : ''}</span>`;
-  if (driveStr) html += `<span class="distance-info__item">🚗 ${driveStr}${driveTime ? ` · ${driveTime}` : ''}</span>`;
-  html += `</div>`;
-  return html;
+  if (d.walk != null) {
+    const dist = formatDistance(d.walk);
+    const time = formatDuration(d.walkMin);
+    items.push(`<span class="distance-info__item">🚶 ${dist}${time ? ` · ${time}` : ''}</span>`);
+  }
+
+  if (d.transitMin != null) {
+    items.push(`<span class="distance-info__item">🚇 ${formatDuration(d.transitMin)}</span>`);
+  }
+
+  if (d.drive != null) {
+    const dist = formatDistance(d.drive);
+    const time = formatDuration(d.driveMin);
+    items.push(`<span class="distance-info__item">🚗 ${dist}${time ? ` · ${time}` : ''}</span>`);
+  }
+
+  if (items.length === 0) return '';
+  return `<div class="distance-info">${items.join('')}</div>`;
 }
 
 function initMap() {
