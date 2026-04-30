@@ -159,44 +159,67 @@ async function loadDashboardStats() {
    ════════════════════════════════════════════════════════════ */
 
 let _activityListeners = [];
-let _activityCache = { ideas: [], expenses: [], todos: [] };
+let _activityCache = { ideas: [], todos: [], expenses: [], photos: [], messages: [] };
 let _usersMap = {};
 
+function esc(str) {
+  if (!str) return '';
+  const d = document.createElement('div');
+  d.textContent = String(str);
+  return d.innerHTML;
+}
+
 function cleanupActivityListeners() {
+  console.log(`[activity] Cleaning ${_activityListeners.length} listeners`);
   _activityListeners.forEach(unsub => { try { unsub(); } catch (_) {} });
   _activityListeners = [];
 }
 
 function setupActivityFeed() {
-  // Cleanup předchozích listenerů + reset cache při každém vstupu na Dashboard
+  console.log('[activity] Setting up real-time listeners');
   cleanupActivityListeners();
-  _activityCache = { ideas: [], expenses: [], todos: [] };
+  _activityCache = { ideas: [], todos: [], expenses: [], photos: [], messages: [] };
   _usersMap = {};
 
   getDocs(collection(db, 'users'))
     .then(snap => {
-      snap.docs.forEach(d => { _usersMap[d.id] = d.data(); });
+      snap.docs.forEach(d => { _usersMap[d.id] = { id: d.id, ...d.data() }; });
+      console.log(`[activity] Loaded ${Object.keys(_usersMap).length} users`);
       renderActivityFeed();
     })
-    .catch(err => console.error('[dashboard] users load:', err));
+    .catch(err => console.error('[activity] Users load error:', err));
 
-  ['ideas', 'expenses', 'todos'].forEach(col => {
-    try {
-      const q = query(collection(db, col), orderBy('createdAt', 'desc'), limit(10));
-      const unsub = onSnapshot(q,
-        snap => {
-          if (!_container) return;
-          _activityCache[col] = snap.docs.map(d => ({ id: d.id, type: col, ...d.data() }));
-          renderActivityFeed();
-          updateQuickStats();
-        },
-        err => console.error(`[dashboard] ${col} listener:`, err),
-      );
-      _activityListeners.push(unsub);
-    } catch (err) {
-      console.error(`[dashboard] Failed to setup ${col} listener:`, err);
-    }
-  });
+  // Core kolekce – vždy existují
+  ['ideas', 'todos', 'expenses'].forEach(col => setupCollectionListener(col, 10));
+  // Volitelné kolekce – graceful failure pokud neexistují
+  ['photos', 'messages'].forEach(col => setupCollectionListener(col, 5));
+
+  console.log(`[activity] ${_activityListeners.length} listeners registered`);
+}
+
+function setupCollectionListener(col, maxItems) {
+  try {
+    const q = query(collection(db, col), orderBy('createdAt', 'desc'), limit(maxItems));
+    const unsub = onSnapshot(q,
+      snap => {
+        if (!_container) return;
+        console.log(`[activity] ${col} update: ${snap.docs.length} items`);
+        _activityCache[col] = snap.docs.map(d => ({ id: d.id, type: col, ...d.data() }));
+        renderActivityFeed();
+        updateQuickStats();
+      },
+      err => {
+        if (err.code === 'permission-denied' || err.code === 'failed-precondition') {
+          console.warn(`[activity] ${col} not available, skipping`);
+        } else {
+          console.error(`[activity] ${col} listener error:`, err);
+        }
+      },
+    );
+    _activityListeners.push(unsub);
+  } catch (err) {
+    console.error(`[activity] Failed to setup ${col} listener:`, err);
+  }
 }
 
 function renderActivityFeed() {
@@ -206,15 +229,17 @@ function renderActivityFeed() {
 
   const allActivities = [
     ..._activityCache.ideas,
-    ..._activityCache.expenses,
     ..._activityCache.todos,
+    ..._activityCache.expenses,
+    ..._activityCache.photos,
+    ..._activityCache.messages,
   ].filter(item => item.createdAt)
    .sort((a, b) => {
      const tA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
      const tB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
      return tB - tA;
    })
-   .slice(0, 10);
+   .slice(0, 20);
 
   if (allActivities.length === 0) {
     feedEl.innerHTML = `
@@ -257,24 +282,32 @@ function buildActivityItem(item) {
 }
 
 function getAuthorUid(item) {
-  return item.authorUid || item.paidByUid || item.createdByUid || null;
+  return item.authorUid || item.paidByUid || item.createdByUid || item.userId || null;
 }
 
 function describeActivity(item) {
   switch (item.type) {
     case 'ideas':
       return { icon: '⭐', action: 'přidal/a nápad', target: item.title || 'bez názvu' };
+    case 'todos':
+      return {
+        icon:   item.done ? '✅' : '📝',
+        action: item.done ? 'splnil/a úkol' : 'přidal/a úkol',
+        target: item.title || 'bez názvu',
+      };
     case 'expenses':
       return {
         icon:   '💰',
         action: 'přidal/a výdaj',
         target: item.description || `${item.amountJpy ?? item.amount ?? ''} JPY`,
       };
-    case 'todos':
+    case 'photos':
+      return { icon: '📸', action: 'nahrál/a fotku', target: item.caption || item.filename || '' };
+    case 'messages':
       return {
-        icon:   item.done ? '✅' : '📝',
-        action: item.done ? 'splnil/a úkol' : 'přidal/a úkol',
-        target: item.title || 'bez názvu',
+        icon:   '💬',
+        action: 'napsal/a',
+        target: String(item.text || '').slice(0, 60) + (String(item.text || '').length > 60 ? '…' : ''),
       };
     default:
       return { icon: '📝', action: 'aktivita', target: '—' };
@@ -295,15 +328,11 @@ function formatRelativeTime(timestamp) {
 function updateQuickStats() {
   if (!_container) return;
 
-  // Moje otevřené úkoly přiřazené mně (todos.js ukládá pole `done: boolean`)
-  const myUid    = state.user?.uid;
-  const myTodos  = _activityCache.todos.filter(t =>
-    t.assignedToUid === myUid && !t.done
-  );
-  const todosEl  = _container.querySelector('#stat-todos');
+  const myUid   = state.user?.uid;
+  const myTodos = _activityCache.todos.filter(t => t.assignedToUid === myUid && !t.done);
+  const todosEl = _container.querySelector('#stat-todos');
   if (todosEl) todosEl.textContent = myTodos.length;
 
-  // Celkový počet výdajů (limit 10 z listeneru – zobraz přesný počet z cache)
   const expensesEl = _container.querySelector('#stat-expenses');
   if (expensesEl) expensesEl.textContent = _activityCache.expenses.length;
 }
