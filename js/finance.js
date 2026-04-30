@@ -1,5 +1,5 @@
 /**
- * finance.js – Sdílené výdaje skupiny + Settle Up (minimální platby).
+ * finance.js – Sdílené výdaje skupiny + Settle Up + Statistiky + JPY/CZK kurz.
  */
 import { db } from './firebase-config.js';
 import { state, showToast, showConfirm } from './app.js';
@@ -8,12 +8,25 @@ import {
   query, orderBy, onSnapshot, serverTimestamp, getDocs,
 } from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js';
 
-let _unsub     = null;
-let _expenses  = [];
-let _members   = [];
-let _container = null;
-let _tab       = 'expenses'; // 'expenses' | 'settle'
-let _onEsc     = null;
+const CATEGORIES = {
+  food:       { label: 'Jídlo & restaurace',  icon: '🍱', color: '#FF9500' },
+  transport:  { label: 'Doprava',              icon: '🚇', color: '#0A84FF' },
+  hotel:      { label: 'Ubytování',            icon: '🏨', color: '#5E5CE6' },
+  attraction: { label: 'Atrakce & vstupné',    icon: '🎟️', color: '#FF375F' },
+  shopping:   { label: 'Shopping',             icon: '🛍️', color: '#BF5AF2' },
+  drinks:     { label: 'Drobnosti & kafe',     icon: '☕', color: '#A0522D' },
+  health:     { label: 'Zdraví & lékárna',     icon: '💊', color: '#34C759' },
+  comm:       { label: 'Komunikace (eSIM)',     icon: '🌐', color: '#5AC8FA' },
+  other:      { label: 'Ostatní',              icon: '❓', color: '#8E8E93' },
+};
+
+let _unsub        = null;
+let _expenses     = [];
+let _members      = [];
+let _container    = null;
+let _tab          = 'expenses'; // 'expenses' | 'settle' | 'stats'
+let _exchangeRate = null;       // JPY → CZK
+let _onEsc        = null;
 
 /* ════════════════════════════════════════════════════════════
    RENDER
@@ -57,9 +70,11 @@ export function render(container) {
   loadMembers().then(() => {
     fillPaidBySelect();
     fillSplitCheckboxes();
+    fillCategorySelect();
   });
 
   subscribe();
+  fetchExchangeRate();
   return cleanup;
 }
 
@@ -74,6 +89,10 @@ function cleanup() {
 /* ── HTML Shell ──────────────────────────────────────────────── */
 
 function buildShell() {
+  const catOptions = Object.entries(CATEGORIES)
+    .map(([k, c]) => `<option value="${k}">${c.icon} ${c.label}</option>`)
+    .join('');
+
   return `
     <div class="page page--enter">
       <div class="page-header todos-page-header">
@@ -83,13 +102,16 @@ function buildShell() {
         </div>
       </div>
 
-      <!-- CTA: Přidat výdaj -->
+      <div class="exchange-rate" id="fin-exchange-rate">
+        <span class="exchange-rate__icon">💱</span>
+        <span id="fin-rate-text">Načítám kurz JPY/CZK…</span>
+      </div>
+
       <button class="add-cta" id="fin-btn-add">
         <span class="add-cta__plus">+</span>
         <span class="add-cta__text">Přidat nový výdaj</span>
       </button>
 
-      <!-- Inline form: přidat výdaj -->
       <div class="inline-form" id="fin-add-form" hidden>
         <div class="inline-form__header">
           <h2 class="inline-form__title">💰 Nový výdaj</h2>
@@ -107,9 +129,13 @@ function buildShell() {
                 <input type="number" id="fin-amount" class="form-input" placeholder="2 400" min="1" max="99999999" required />
               </div>
               <div class="form-group">
-                <label for="fin-paidby" class="form-label">Zaplatil/a <span class="required" aria-label="povinné">*</span></label>
-                <select id="fin-paidby" class="form-select" required></select>
+                <label for="fin-category" class="form-label">Kategorie</label>
+                <select id="fin-category" class="form-select">${catOptions}</select>
               </div>
+            </div>
+            <div class="form-group">
+              <label for="fin-paidby" class="form-label">Zaplatil/a <span class="required" aria-label="povinné">*</span></label>
+              <select id="fin-paidby" class="form-select" required></select>
             </div>
             <div class="form-group">
               <label class="form-label">Rozdělit mezi <span class="required" aria-label="povinné">*</span></label>
@@ -125,12 +151,9 @@ function buildShell() {
       </div>
 
       <div class="finance-tabs" role="tablist" aria-label="Sekce finance">
-        <button class="finance-tab finance-tab--active" data-tab="expenses" role="tab" aria-selected="true">
-          🧾 Výdaje
-        </button>
-        <button class="finance-tab" data-tab="settle" role="tab" aria-selected="false">
-          ⚖️ Vyrovnání
-        </button>
+        <button class="finance-tab finance-tab--active" data-tab="expenses" role="tab" aria-selected="true">🧾 Výdaje</button>
+        <button class="finance-tab" data-tab="settle" role="tab" aria-selected="false">⚖️ Vyrovnání</button>
+        <button class="finance-tab" data-tab="stats" role="tab" aria-selected="false">📊 Statistiky</button>
       </div>
 
       <div id="fin-tab-expenses" role="tabpanel">
@@ -147,8 +170,35 @@ function buildShell() {
       <div id="fin-tab-settle" class="hidden" role="tabpanel">
         <div id="fin-settle-content"></div>
       </div>
+
+      <div id="fin-tab-stats" class="hidden" role="tabpanel">
+        <div id="fin-stats-content"></div>
+      </div>
     </div>
   `;
+}
+
+/* ════════════════════════════════════════════════════════════
+   EXCHANGE RATE
+   ════════════════════════════════════════════════════════════ */
+
+async function fetchExchangeRate() {
+  try {
+    const res  = await fetch('https://api.frankfurter.app/latest?from=JPY&to=CZK');
+    const data = await res.json();
+    _exchangeRate = data.rates?.CZK ?? 0.16;
+  } catch {
+    _exchangeRate = 0.16;
+  }
+
+  const el = _container?.querySelector('#fin-rate-text');
+  if (el) {
+    el.textContent = `1 JPY = ${_exchangeRate.toFixed(4)} CZK (live)`;
+  }
+
+  // Re-render current tab to show CZK values
+  renderExpenses();
+  if (_tab === 'stats') renderStats();
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -186,6 +236,12 @@ function fillSplitCheckboxes() {
   `).join('');
 }
 
+function fillCategorySelect() {
+  // Already built in shell HTML — just ensure default is 'food'
+  const sel = _container?.querySelector('#fin-category');
+  if (sel) sel.value = 'food';
+}
+
 /* ════════════════════════════════════════════════════════════
    FIRESTORE
    ════════════════════════════════════════════════════════════ */
@@ -196,6 +252,7 @@ function subscribe() {
     _expenses = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     renderExpenses();
     if (_tab === 'settle') renderSettle();
+    if (_tab === 'stats')  renderStats();
   }, (err) => {
     console.error('[finance] onSnapshot:', err);
     showToast('Chyba při načítání výdajů.', 'error');
@@ -215,7 +272,9 @@ function switchTab(tab) {
   });
   _container?.querySelector('#fin-tab-expenses')?.classList.toggle('hidden', tab !== 'expenses');
   _container?.querySelector('#fin-tab-settle')?.classList.toggle('hidden', tab !== 'settle');
+  _container?.querySelector('#fin-tab-stats')?.classList.toggle('hidden', tab !== 'stats');
   if (tab === 'settle') renderSettle();
+  if (tab === 'stats')  renderStats();
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -239,8 +298,8 @@ function renderExpenses() {
     return;
   }
 
-  const total    = _expenses.reduce((s, e) => s + (e.amountJpy ?? 0), 0);
-  const myShare  = _expenses.reduce((s, e) => {
+  const total   = _expenses.reduce((s, e) => s + (e.amountJpy ?? 0), 0);
+  const myShare = _expenses.reduce((s, e) => {
     if (!e.splitWithUids?.includes(state.user?.uid)) return s;
     return s + (e.amountJpy ?? 0) / (e.splitWithUids.length || 1);
   }, 0);
@@ -259,10 +318,12 @@ function renderSummary(total, myShare) {
       <div class="fin-summary-item">
         <span class="fin-summary-label">Celkem výdajů</span>
         <span class="fin-summary-value">${fmtJpy(total)}</span>
+        <span class="fin-summary-czk">${fmtCzk(total)}</span>
       </div>
       <div class="fin-summary-item">
         <span class="fin-summary-label">Můj podíl</span>
         <span class="fin-summary-value">${fmtJpy(Math.round(myShare))}</span>
+        <span class="fin-summary-czk">${fmtCzk(myShare)}</span>
       </div>
       <div class="fin-summary-item">
         <span class="fin-summary-label">Počet výdajů</span>
@@ -276,9 +337,9 @@ function buildExpenseCard(exp) {
   const canDelete  = exp.authorUid === state.user?.uid || state.isAdmin;
   const splitCount = exp.splitWithUids?.length || 1;
   const share      = Math.round(exp.amountJpy / splitCount);
-  const names      = exp.splitWithNicknames?.join(', ') ?? '';
   const timeStr    = exp.createdAt?.toDate ? fmtTime(exp.createdAt.toDate()) : '';
   const isMe       = exp.paidByUid === state.user?.uid;
+  const cat        = CATEGORIES[exp.category] ?? CATEGORIES.other;
 
   return `
     <article class="expense-card card${isMe ? ' expense-card--mine' : ''}" role="listitem" data-id="${exp.id}">
@@ -286,16 +347,17 @@ function buildExpenseCard(exp) {
         <div class="expense-card__info">
           <h3 class="expense-card__title">${esc(exp.description)}</h3>
           <div class="expense-card__meta">
+            <span class="todo-meta-chip" style="--cat-color:${cat.color}">${cat.icon} ${esc(cat.label)}</span>
             <span class="todo-meta-chip">
               <span aria-hidden="true">${esc(exp.paidByAvatar ?? '😊')}</span>
               ${esc(exp.paidByNickname ?? '—')} zaplatil/a
             </span>
-            ${names ? `<span class="todo-meta-chip">👥 ${esc(names)}</span>` : ''}
             ${timeStr ? `<span class="todo-meta-chip todo-meta-chip--muted">${timeStr}</span>` : ''}
           </div>
         </div>
         <div class="expense-card__amounts">
           <span class="expense-amount">${fmtJpy(exp.amountJpy)}</span>
+          <span class="expense-amount-czk">${fmtCzk(exp.amountJpy)}</span>
           <span class="expense-share">/${splitCount} os. = ${fmtJpy(share)}</span>
         </div>
       </div>
@@ -356,7 +418,7 @@ function renderSettle() {
             <span class="settle-from">${esc(from.avatar ?? '😊')} <strong>${esc(from.nickname)}</strong></span>
             <span class="settle-arrow" aria-hidden="true">→</span>
             <span class="settle-to">${esc(to.avatar ?? '😊')} <strong>${esc(to.nickname)}</strong></span>
-            <span class="settle-amount">${fmtJpy(Math.round(tx.amount))}</span>
+            <span class="settle-amount">${fmtJpy(Math.round(tx.amount))} <small>${fmtCzk(tx.amount)}</small></span>
           </div>`;
       }).join('')
     : `<p class="settle-all-good">🎉 Všichni jsou vyrovnáni!</p>`;
@@ -399,7 +461,7 @@ function computeSettleUp(balances) {
   const debts   = [];
 
   Object.entries(balances).forEach(([uid, bal]) => {
-    if (bal > 0.5)   credits.push({ uid, amount: bal });
+    if (bal > 0.5)       credits.push({ uid, amount: bal });
     else if (bal < -0.5) debts.push({ uid, amount: -bal });
   });
 
@@ -419,6 +481,104 @@ function computeSettleUp(balances) {
   }
 
   return transactions;
+}
+
+/* ════════════════════════════════════════════════════════════
+   RENDER STATISTICS
+   ════════════════════════════════════════════════════════════ */
+
+function renderStats() {
+  const el = _container?.querySelector('#fin-stats-content');
+  if (!el) return;
+
+  if (!_expenses.length) {
+    el.innerHTML = `
+      <div class="empty-state">
+        <span class="empty-state__icon" aria-hidden="true">📊</span>
+        <h2 class="empty-state__title">Žádná data</h2>
+        <p class="empty-state__desc">Přidej výdaje pro zobrazení statistik.</p>
+      </div>`;
+    return;
+  }
+
+  const total = _expenses.reduce((s, e) => s + (e.amountJpy ?? 0), 0);
+
+  // By category
+  const byCategory = {};
+  _expenses.forEach(exp => {
+    const key = exp.category ?? 'other';
+    byCategory[key] = (byCategory[key] ?? 0) + (exp.amountJpy ?? 0);
+  });
+
+  // By payer
+  const byPayer = {};
+  _expenses.forEach(exp => {
+    byPayer[exp.paidByUid] = (byPayer[exp.paidByUid] ?? 0) + (exp.amountJpy ?? 0);
+  });
+
+  const memberMap = Object.fromEntries(_members.map(m => [m.uid, m]));
+
+  const catRows = Object.entries(byCategory)
+    .sort((a, b) => b[1] - a[1])
+    .map(([key, amount]) => {
+      const cat = CATEGORIES[key] ?? CATEGORIES.other;
+      const pct = total > 0 ? Math.round((amount / total) * 100) : 0;
+      return `
+        <div class="balance-item">
+          <span class="balance-avatar" aria-hidden="true">${cat.icon}</span>
+          <span class="balance-name">${cat.label}</span>
+          <div class="stats-bar-wrap">
+            <div class="stats-bar" style="width:${pct}%;background:${cat.color}"></div>
+          </div>
+          <span class="balance-amount">${fmtJpy(amount)} <small>(${pct}%)</small></span>
+        </div>`;
+    }).join('');
+
+  const payerRows = Object.entries(byPayer)
+    .sort((a, b) => b[1] - a[1])
+    .map(([uid, amount]) => {
+      const m = memberMap[uid];
+      if (!m) return '';
+      return `
+        <div class="balance-item">
+          <span class="balance-avatar" aria-hidden="true">${esc(m.avatar ?? '😊')}</span>
+          <span class="balance-name">${esc(m.nickname)}</span>
+          <span class="balance-amount">${fmtJpy(amount)} <small>${fmtCzk(amount)}</small></span>
+        </div>`;
+    }).join('');
+
+  el.innerHTML = `
+    <div class="settle-section">
+      <h3 class="settle-section-title">Celkový přehled</h3>
+      <div class="fin-summary">
+        <div class="fin-summary-grid">
+          <div class="fin-summary-item">
+            <span class="fin-summary-label">Celkem</span>
+            <span class="fin-summary-value">${fmtJpy(total)}</span>
+            <span class="fin-summary-czk">${fmtCzk(total)}</span>
+          </div>
+          <div class="fin-summary-item">
+            <span class="fin-summary-label">Průměr/výdaj</span>
+            <span class="fin-summary-value">${fmtJpy(Math.round(total / _expenses.length))}</span>
+          </div>
+          <div class="fin-summary-item">
+            <span class="fin-summary-label">Celkem výdajů</span>
+            <span class="fin-summary-value">${_expenses.length}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="settle-section">
+      <h3 class="settle-section-title">Podle kategorií</h3>
+      <div class="balance-list">${catRows}</div>
+    </div>
+
+    <div class="settle-section">
+      <h3 class="settle-section-title">Podle plátce</h3>
+      <div class="balance-list">${payerRows}</div>
+    </div>
+  `;
 }
 
 /* ════════════════════════════════════════════════════════════
@@ -481,10 +641,12 @@ async function handleFormSubmit(e) {
   const descEl   = _container.querySelector('#fin-desc');
   const amountEl = _container.querySelector('#fin-amount');
   const paidByEl = _container.querySelector('#fin-paidby');
+  const catEl    = _container.querySelector('#fin-category');
 
   const description = descEl.value.trim();
   const amountRaw   = amountEl.value;
   const paidByUid   = paidByEl.value;
+  const category    = catEl?.value ?? 'other';
 
   let valid = true;
   [[descEl, !description], [amountEl, !amountRaw || Number(amountRaw) <= 0]].forEach(([el, err]) => {
@@ -503,8 +665,8 @@ async function handleFormSubmit(e) {
     return;
   }
 
-  const paidByMember     = _members.find(m => m.uid === paidByUid);
-  const splitNicknames   = splitUids
+  const paidByMember   = _members.find(m => m.uid === paidByUid);
+  const splitNicknames = splitUids
     .map(uid => _members.find(m => m.uid === uid)?.nickname)
     .filter(Boolean);
 
@@ -515,6 +677,7 @@ async function handleFormSubmit(e) {
     await addDoc(collection(db, 'expenses'), {
       description,
       amountJpy:          Number(amountRaw),
+      category,
       paidByUid,
       paidByNickname:     paidByMember?.nickname ?? '—',
       paidByAvatar:       paidByMember?.avatar   ?? '😊',
@@ -541,12 +704,18 @@ function fmtJpy(n) {
   return `${Number(n).toLocaleString('cs-CZ')} JPY`;
 }
 
+function fmtCzk(jpyAmount) {
+  if (!_exchangeRate) return '';
+  const czk = Math.round(jpyAmount * _exchangeRate);
+  return `≈ ${czk.toLocaleString('cs-CZ')} Kč`;
+}
+
 function fmtTime(date) {
   const diff = Date.now() - date.getTime();
-  if (diff < 60_000)          return 'před chvílí';
-  if (diff < 3_600_000)       return `před ${Math.floor(diff / 60_000)} min`;
-  if (diff < 86_400_000)      return `před ${Math.floor(diff / 3_600_000)} h`;
-  if (diff < 7 * 86_400_000)  return `před ${Math.floor(diff / 86_400_000)} dny`;
+  if (diff < 60_000)         return 'před chvílí';
+  if (diff < 3_600_000)      return `před ${Math.floor(diff / 60_000)} min`;
+  if (diff < 86_400_000)     return `před ${Math.floor(diff / 3_600_000)} h`;
+  if (diff < 7 * 86_400_000) return `před ${Math.floor(diff / 86_400_000)} dny`;
   return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
 }
 

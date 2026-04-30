@@ -5278,3 +5278,77 @@ button, .btn, [role="button"] {
   border: 2px solid var(--cat-color, #0A84FF) !important;
   background: white !important;
 }
+
+/* ─── 58. Exchange Rate Banner ──────────────────────────────── */
+
+.exchange-rate {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(10, 132, 255, 0.08);
+  border: 1px solid rgba(10, 132, 255, 0.2);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-blue);
+  margin-bottom: 16px;
+}
+
+.exchange-rate__icon { font-size: 14px; }
+
+/* ─── 59. Finance & Todos additions ────────────────────────── */
+
+/* CZK subtitle in summary */
+.fin-summary-czk {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+/* CZK conversion under JPY amount on expense card */
+.expense-amount-czk {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-top: 1px;
+}
+
+/* Category chip on expense cards */
+.todo-meta-chip[style*="--cat-color"] {
+  border-left: 3px solid var(--cat-color, var(--border));
+}
+
+/* Small CZK text inside settle amounts */
+.settle-amount small {
+  display: block;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* Stats bar */
+.stats-bar-wrap {
+  flex: 1;
+  height: 6px;
+  background: var(--bg-surface-2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0 10px;
+  min-width: 40px;
+}
+
+.stats-bar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width .4s ease;
+}
+
+/* balance-amount with inline small */
+.balance-amount small {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+  margin-left: 4px;
+}

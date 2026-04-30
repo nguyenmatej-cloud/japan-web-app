@@ -19,7 +19,7 @@ let _todos      = [];
 let _members    = [];
 let _container  = null;
 let _editingId  = null;
-let _filter     = 'all';  // 'all' | 'open' | 'done'
+let _filter     = 'all';  // 'all' | 'mine' | 'active' | 'done'
 let _filterUser = '';
 let _onEsc      = null;
 
@@ -89,13 +89,11 @@ function buildShell() {
         </div>
       </div>
 
-      <!-- CTA: Přidat úkol -->
       <button class="add-cta" id="td-btn-add">
         <span class="add-cta__plus">+</span>
         <span class="add-cta__text">Přidat nový úkol</span>
       </button>
 
-      <!-- Inline form: přidat / upravit úkol -->
       <div class="inline-form" id="td-add-form" hidden>
         <div class="inline-form__header">
           <h2 class="inline-form__title" id="td-form-title">✅ Nový úkol</h2>
@@ -143,7 +141,8 @@ function buildShell() {
       <div class="todos-toolbar">
         <div class="todo-status-filters" role="group" aria-label="Filtr stavu">
           <button class="todo-filter-btn todo-filter-btn--active" data-filter="all">Vše</button>
-          <button class="todo-filter-btn" data-filter="open">Otevřené</button>
+          <button class="todo-filter-btn" data-filter="mine">Moje</button>
+          <button class="todo-filter-btn" data-filter="active">Aktivní</button>
           <button class="todo-filter-btn" data-filter="done">Hotové ✅</button>
         </div>
         <select class="form-select todo-filter-user" id="td-filter-user" aria-label="Filtr přiřazeného">
@@ -226,12 +225,20 @@ function renderList() {
 
   _container?.querySelector('#td-loading')?.remove();
 
+  const uid = state.user?.uid;
   let todos = [..._todos];
-  if (_filter === 'open') todos = todos.filter(t => !t.done);
-  if (_filter === 'done') todos = todos.filter(t => t.done);
+
+  if (_filter === 'mine') {
+    todos = todos.filter(t => t.authorUid === uid || t.assignedToUid === uid);
+  } else if (_filter === 'active') {
+    todos = todos.filter(t => !t.done);
+  } else if (_filter === 'done') {
+    todos = todos.filter(t => t.done);
+  }
+
   if (_filterUser) todos = todos.filter(t => t.assignedToUid === _filterUser);
 
-  // Sort: open first, then by priority, then by deadline
+  // Sort: active first (by priority), then done
   todos.sort((a, b) => {
     if (a.done !== b.done) return a.done ? 1 : -1;
     const priOrder = { high: 0, medium: 1, low: 2 };
@@ -241,21 +248,15 @@ function renderList() {
     return 0;
   });
 
+  const activeCount = _todos.filter(t => !t.done).length;
+  const doneCount   = _todos.filter(t => t.done).length;
   if (countEl) {
-    countEl.textContent = todos.length
-      ? `${todos.length} ${pluralTodos(todos.length)}`
-      : '';
+    countEl.textContent = `${activeCount} aktivních · ${doneCount} hotových · ${_todos.length} celkem`;
   }
 
   listEl.innerHTML = todos.length
     ? todos.map(t => buildTodoCard(t)).join('')
     : buildEmptyState();
-}
-
-function pluralTodos(n) {
-  if (n === 1) return 'úkol';
-  if (n >= 2 && n <= 4) return 'úkoly';
-  return 'úkolů';
 }
 
 function buildTodoCard(todo) {
@@ -304,12 +305,17 @@ function buildTodoCard(todo) {
 }
 
 function buildEmptyState() {
-  const hasFilter = _filter !== 'all' || _filterUser;
+  const msgs = {
+    mine:   ['🔍', 'Žádné tvoje úkoly', 'Nemáš žádné přiřazené ani vytvořené úkoly.'],
+    active: ['✨', 'Vše hotové!', 'Žádné aktivní úkoly — skvělá práce!'],
+    done:   ['🎉', 'Nic hotového', 'Zatím jsi nic nesplnil/a.'],
+  };
+  const [icon, title, desc] = msgs[_filter] ?? ['✅', 'Žádné úkoly', 'Přidej první skupinový úkol!'];
   return `
     <div class="empty-state">
-      <span class="empty-state__icon" aria-hidden="true">${hasFilter ? '🔍' : '✅'}</span>
-      <h2 class="empty-state__title">${hasFilter ? 'Žádné úkoly' : 'Žádné úkoly'}</h2>
-      <p class="empty-state__desc">${hasFilter ? 'Zkus změnit filtr.' : 'Přidej první skupinový úkol!'}</p>
+      <span class="empty-state__icon" aria-hidden="true">${icon}</span>
+      <h2 class="empty-state__title">${title}</h2>
+      <p class="empty-state__desc">${desc}</p>
     </div>`;
 }
 
@@ -355,6 +361,7 @@ async function toggleDone(todoId) {
       done:      !todo.done,
       updatedAt: serverTimestamp(),
     });
+    showToast(todo.done ? '↩️ Vráceno' : '✅ Hotovo!', 'success');
   } catch (err) {
     console.error('[todos] toggleDone:', err);
     showToast('Nepodařilo se uložit stav.', 'error');
@@ -505,10 +512,10 @@ function isDeadlinePast(deadline) {
 function formatDeadline(date) {
   const diff = date.getTime() - Date.now();
   const days = Math.ceil(diff / 86_400_000);
-  if (days < 0)  return `Po termínu (${date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' })})`;
-  if (days === 0) return 'Dnes';
-  if (days === 1) return 'Zítra';
-  if (days <= 7)  return `Za ${days} dní`;
+  if (days < 0)   return `Po termínu (${date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' })})`;
+  if (days === 0)  return 'Dnes';
+  if (days === 1)  return 'Zítra';
+  if (days <= 7)   return `Za ${days} dní`;
   return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
