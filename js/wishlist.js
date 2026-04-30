@@ -73,9 +73,13 @@ let _pickerMap      = null;
 let _pickerMarker   = null;
 let _pickerLocation = null; // { name, lat, lng } | null
 
-// Tile layers (pro theme switch)
+// Tile layers
 let _mapTileLayer    = null;
 let _pickerTileLayer = null;
+
+// User location (jen 1 marker najednou)
+let _userLocationMarker = null;
+let _userLocationCircle = null;
 
 /* ════════════════════════════════════════════════════════════
    RENDER (entry point)
@@ -906,162 +910,38 @@ async function confirmDelete(ideaId) {
 
 const _getMapTileUrl = () => 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
-const _TILE_PROVIDERS = [
-  {
-    name: 'OSM (HTTPS)',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    options: { attribution: '&copy; OSM', maxZoom: 19, crossOrigin: 'anonymous' },
-  },
-  {
-    name: 'CARTO Voyager',
-    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    options: { attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous' },
-  },
-  {
-    name: 'Stadia',
-    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
-    options: { attribution: '&copy; Stadia &copy; OSM', maxZoom: 20, crossOrigin: 'anonymous' },
-  },
-  {
-    name: 'Wikimedia',
-    url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
-    options: { attribution: '&copy; Wikimedia &copy; OSM', maxZoom: 18, crossOrigin: 'anonymous' },
-  },
-];
-
 function initMap() {
   if (!window.L) { console.warn('[wishlist] Leaflet není načten'); return; }
   const mapEl = _container?.querySelector('#wl-map');
   if (!mapEl || _map) return;
 
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  // Odstraň případný starý debug overlay
+  document.getElementById('map-debug-overlay')?.remove();
 
-  /* ── DEBUG OVERLAY ─────────────────────────────────────── */
-  const dbgWrap = mapEl.parentElement || mapEl;
-  if (dbgWrap !== mapEl) dbgWrap.style.position = 'relative';
+  _userLocationMarker = null;
+  _userLocationCircle = null;
 
-  const overlay = document.createElement('div');
-  overlay.id = 'map-debug-overlay';
-  overlay.style.cssText = [
-    'position:absolute', 'top:10px', 'left:10px', 'right:10px',
-    'max-height:200px', 'background:rgba(0,0,0,0.9)', 'color:#00ff00',
-    'font-family:-apple-system,monospace', 'font-size:10px',
-    'padding:8px', 'border-radius:8px', 'overflow-y:auto',
-    'z-index:9999', 'border:1px solid #00ff00',
-    'line-height:1.3', 'box-sizing:border-box',
-  ].join(';');
+  _map = L.map(mapEl, {
+    center: [35.6762, 139.6503],
+    zoom: 11,
+    zoomControl: false,
+    attributionControl: true,
+  });
 
-  overlay.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;
-                margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(0,255,0,.3)">
-      <strong style="color:#00ff00;font-size:11px">🐛 MAP DEBUG</strong>
-      <button id="dbg-close" style="background:#ff4444;color:white;border:none;
-              padding:2px 8px;font-size:10px;cursor:pointer;border-radius:4px">SKRÝT</button>
-    </div>
-    <div id="dbg-content"></div>`;
-  dbgWrap.appendChild(overlay);
-
-  const dbgContent = overlay.querySelector('#dbg-content');
-  setTimeout(() => overlay.querySelector('#dbg-close')?.addEventListener('click', () => { overlay.style.display = 'none'; }), 100);
-
-  function dbg(msg, type = 'info') {
-    const c = { info: '#00ff00', error: '#ff4444', warn: '#ffaa00', success: '#88ff88' };
-    const t = new Date().toISOString().substr(11, 8);
-    const d = document.createElement('div');
-    d.style.color = c[type] ?? '#00ff00';
-    d.textContent = `[${t}] ${msg}`;
-    dbgContent.appendChild(d);
-    dbgContent.scrollTop = dbgContent.scrollHeight;
-    console.log(`[map-debug] ${msg}`);
-  }
-
-  const ua = navigator.userAgent;
-  dbg(`UA: ${ua.length > 70 ? ua.substr(0, 70) + '...' : ua}`);
-  dbg(`isIOS: ${isIOS} | Leaflet: ${L.version}`);
-  dbg(`URL: ${window.location.host}`);
-
-  /* ── MAP INIT ──────────────────────────────────────────── */
-  _map = L.map(mapEl, { center: [35.6762, 139.6503], zoom: 11, zoomControl: false });
   L.control.zoom({ position: 'topright' }).addTo(_map);
 
-  let provIdx = 0;
-  let tileErrorCount = 0;
-  let tileLoadCount  = 0;
-  let firstLoaded    = false;
-  let provTimeout    = null;
+  // ESRI World Light Gray — funguje všude, latinské popisky, no CORS issues
+  _mapTileLayer = L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
+    { attribution: 'Tiles &copy; Esri', maxZoom: 16, crossOrigin: true }
+  ).addTo(_map);
 
-  function tryProvider() {
-    if (provTimeout) { clearTimeout(provTimeout); provTimeout = null; }
-    if (_mapTileLayer) { _map.removeLayer(_mapTileLayer); _mapTileLayer = null; }
+  // Reference vrstva — anglické popisky měst
+  L.tileLayer(
+    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
+    { attribution: '', maxZoom: 16, crossOrigin: true, pane: 'overlayPane' }
+  ).addTo(_map);
 
-    if (provIdx >= _TILE_PROVIDERS.length) {
-      dbg('❌ ALL PROVIDERS FAILED – pošli screenshot autorovi', 'error');
-      const el = _map.getContainer();
-      if (el) {
-        el.style.background = '#E5E7EB';
-        const e = document.createElement('div');
-        e.className = 'map-load-error';
-        e.innerHTML = '🗺️ Mapa se nepodařilo načíst<br><small>Zkontroluj připojení</small>';
-        el.appendChild(e);
-      }
-      return;
-    }
-
-    const p = _TILE_PROVIDERS[provIdx];
-    tileErrorCount = tileLoadCount = 0;
-    firstLoaded = false;
-    dbg(`🔄 Trying: ${p.name}`, 'info');
-
-    _mapTileLayer = L.tileLayer(p.url, p.options);
-
-    _mapTileLayer.on('tileloadstart', (e) => {
-      if (tileLoadCount < 2) dbg(`  → ${(e.tile.src || e.tile.currentSrc || '?').substr(0, 70)}`);
-    });
-
-    _mapTileLayer.on('tileload', () => {
-      tileLoadCount++;
-      if (!firstLoaded) {
-        firstLoaded = true;
-        dbg(`✅ First tile OK! (${p.name})`, 'success');
-        if (provTimeout) { clearTimeout(provTimeout); provTimeout = null; }
-      }
-      if (tileLoadCount === 5) dbg('✅ 5 tiles loaded – provider works!', 'success');
-    });
-
-    _mapTileLayer.on('tileerror', (e) => {
-      tileErrorCount++;
-      if (tileErrorCount <= 3) dbg(`❌ Tile error: ${(e.tile?.src || '?').substr(0, 60)}`, 'error');
-      if (tileErrorCount >= 5 && !firstLoaded) {
-        dbg(`💔 ${p.name} failed (5 errors)`, 'warn');
-        provIdx++;
-        tryProvider();
-      }
-    });
-
-    provTimeout = setTimeout(() => {
-      if (!firstLoaded) {
-        dbg(`⏱ Timeout ${p.name} (8s, loaded:${tileLoadCount}, err:${tileErrorCount})`, 'warn');
-        provIdx++;
-        tryProvider();
-      }
-    }, 8000);
-
-    _mapTileLayer.addTo(_map);
-
-    /* Direct fetch test on first provider */
-    if (provIdx === 0) {
-      const testUrl = p.url
-        .replace('{z}', '5').replace('{x}', '28').replace('{y}', '12')
-        .replace('{s}', 'a').replace('{r}', '');
-      dbg(`🔍 fetch: ${testUrl.substr(0, 70)}`);
-      fetch(testUrl, { mode: 'cors' })
-        .then(r => dbg(`  HTTP ${r.status} ${r.statusText}`, r.ok ? 'success' : 'error'))
-        .catch(err => dbg(`  ❌ ${err.message}`, 'error'));
-    }
-  }
-
-  tryProvider();
   _addLocateControl(_map);
 }
 
@@ -1082,29 +962,60 @@ function _addLocateControl(map) {
         if (!navigator.geolocation) { alert('Geolocation není podporováno'); return; }
 
         btn.innerHTML = '⏳';
+        btn.classList.add('locate-btn--loading');
         btn.style.pointerEvents = 'none';
 
         navigator.geolocation.getCurrentPosition(
-          ({ coords: { latitude: lat, longitude: lng } }) => {
-            map.setView([lat, lng], 15, { animate: true });
+          ({ coords: { latitude: lat, longitude: lng, accuracy } }) => {
+            // Vždy smaž předchozí marker + circle → jen 1 najednou
+            if (_userLocationMarker) { map.removeLayer(_userLocationMarker); _userLocationMarker = null; }
+            if (_userLocationCircle) { map.removeLayer(_userLocationCircle); _userLocationCircle = null; }
 
-            const pin = L.marker([lat, lng], {
+            map.flyTo([lat, lng], 15, { animate: true, duration: 1.5 });
+
+            _userLocationCircle = L.circle([lat, lng], {
+              radius: accuracy,
+              color: '#0A84FF',
+              fillColor: '#0A84FF',
+              fillOpacity: 0.08,
+              weight: 1,
+              opacity: 0.3,
+              interactive: false,
+            }).addTo(map);
+
+            _userLocationMarker = L.marker([lat, lng], {
               icon: L.divIcon({
                 className: 'user-location-pin',
-                html: '<div class="user-location-pin__pulse"></div><div class="user-location-pin__dot"></div>',
+                html: [
+                  '<div class="user-location-pin__pulse user-location-pin__pulse--1"></div>',
+                  '<div class="user-location-pin__pulse user-location-pin__pulse--2"></div>',
+                  '<div class="user-location-pin__pulse user-location-pin__pulse--3"></div>',
+                  '<div class="user-location-pin__core"></div>',
+                ].join(''),
                 iconSize: [24, 24],
                 iconAnchor: [12, 12],
               }),
-            }).addTo(map).bindPopup('📍 Tady jsi!').openPopup();
+              zIndexOffset: 1000,
+            }).addTo(map);
 
-            setTimeout(() => { if (map.hasLayer(pin)) map.removeLayer(pin); }, 30000);
+            const accLabel = accuracy < 50 ? 'velmi přesné' : accuracy < 200 ? 'přesné' : 'orientační';
+            _userLocationMarker.bindPopup(
+              `<div style="text-align:center;padding:4px">` +
+              `<strong style="font-size:14px;color:#1D1D1F">📍 Tady jsi!</strong><br>` +
+              `<small style="color:#6E6E73;font-size:11px">${accLabel} (±${Math.round(accuracy)}m)</small>` +
+              `</div>`
+            ).openPopup();
+
             btn.innerHTML = '📍';
+            btn.classList.remove('locate-btn--loading');
+            btn.classList.add('locate-btn--active');
             btn.style.pointerEvents = '';
           },
           (err) => {
-            const msgs = { 1: 'Povol přístup k poloze v nastavení', 2: 'Poloha není dostupná', 3: 'Časový limit vypršel' };
+            const msgs = { 1: 'Povol přístup k poloze v nastavení prohlížeče', 2: 'Poloha není dostupná', 3: 'Časový limit vypršel' };
             alert(msgs[err.code] ?? 'Nepodařilo se najít polohu');
             btn.innerHTML = '📍';
+            btn.classList.remove('locate-btn--loading');
             btn.style.pointerEvents = '';
           },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
