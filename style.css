@@ -1501,9 +1501,26 @@ a {
   box-shadow: var(--shadow-xl);
   width: 100%;
   max-width: 560px;
-  max-height: calc(100vh - var(--space-8));
-  overflow-y: auto;
+  max-height: calc(100dvh - var(--space-8));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   animation: modal-in var(--transition-normal);
+}
+
+/* form is direct child when modal__body + modal__footer are inside it */
+.modal__content > form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* onboarding uses its own layout — restore scrolling block */
+.modal__content.onboarding {
+  display: block;
+  overflow-y: auto;
 }
 
 .modal__content--sm { max-width: 400px; }
@@ -1526,13 +1543,14 @@ a {
   justify-content: space-between;
   padding: var(--space-5) var(--space-6);
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 .modal__title {
   font-size: 19px;
   font-weight: 700;
   letter-spacing: -0.02em;
-  margin-bottom: 8px;
+  margin: 0;
 }
 
 .modal__close {
@@ -1557,6 +1575,10 @@ a {
 .modal__body {
   padding: var(--space-5) var(--space-6);
   color: var(--text-secondary);
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  min-height: 0;
 }
 
 .modal__footer {
@@ -1566,6 +1588,7 @@ a {
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-3);
+  flex-shrink: 0;
 }
 
 /* ── 19. Toast Notifications ──────────────────────────────── */
@@ -4291,5 +4314,34 @@ button, .btn, [role="button"] {
   50% {
     filter: drop-shadow(0 8px 24px rgba(224, 83, 61, 0.6));
     transform: translateY(-4px);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════
+   49. Remove Bottom Nav — navigation via hamburger menu
+   ══════════════════════════════════════════════════════════════ */
+
+.bottom-nav {
+  display: none !important;
+}
+
+.page,
+#main-content {
+  padding-bottom: env(safe-area-inset-bottom) !important;
+}
+
+@media (max-width: 1023px) {
+  #btn-sidebar-toggle {
+    background: var(--color-blue);
+    color: white;
+    border-radius: 10px;
+    width: 40px;
+    height: 40px;
+  }
+
+  #btn-sidebar-toggle .hamburger,
+  #btn-sidebar-toggle .hamburger::before,
+  #btn-sidebar-toggle .hamburger::after {
+    background: white !important;
   }
 }
