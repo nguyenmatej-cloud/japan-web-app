@@ -27,13 +27,11 @@ export function render(container) {
   container.innerHTML = buildShell();
 
   container.querySelector('#fin-btn-add')
-    ?.addEventListener('click', openModal);
-  container.querySelector('#fin-modal-backdrop')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', openInlineForm);
   container.querySelector('#fin-modal-close')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', closeInlineForm);
   container.querySelector('#fin-form-cancel')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', closeInlineForm);
   container.querySelector('#fin-form')
     ?.addEventListener('submit', handleFormSubmit);
 
@@ -51,8 +49,8 @@ export function render(container) {
 
   _onEsc = (e) => {
     if (e.key !== 'Escape') return;
-    const modal = _container?.querySelector('#fin-modal');
-    if (modal && !modal.classList.contains('hidden')) closeModal();
+    const form = _container?.querySelector('#fin-add-form');
+    if (form && form.classList.contains('inline-form--open')) closeInlineForm();
   };
   document.addEventListener('keydown', _onEsc);
 
@@ -71,7 +69,6 @@ function cleanup() {
   _unsub     = null;
   _container = null;
   _expenses  = [];
-  document.body.style.overflow = '';
 }
 
 /* ── HTML Shell ──────────────────────────────────────────────── */
@@ -84,7 +81,47 @@ function buildShell() {
           <h1 class="page-header__title">💰 Finance & Settle Up</h1>
           <p class="page-header__subtitle">Sdílené výdaje a přehled, kdo komu dluží</p>
         </div>
-        <button class="btn btn--primary" id="fin-btn-add">+ Přidat výdaj</button>
+      </div>
+
+      <!-- CTA: Přidat výdaj -->
+      <button class="add-cta" id="fin-btn-add">
+        <span class="add-cta__plus">+</span>
+        <span class="add-cta__text">Přidat nový výdaj</span>
+      </button>
+
+      <!-- Inline form: přidat výdaj -->
+      <div class="inline-form" id="fin-add-form" hidden>
+        <div class="inline-form__header">
+          <h2 class="inline-form__title">💰 Nový výdaj</h2>
+          <button type="button" class="inline-form__close" id="fin-modal-close" aria-label="Zavřít">×</button>
+        </div>
+        <form id="fin-form" novalidate>
+          <div class="inline-form__body">
+            <div class="form-group">
+              <label for="fin-desc" class="form-label">Popis <span class="required" aria-label="povinné">*</span></label>
+              <input type="text" id="fin-desc" class="form-input" placeholder="Např. Ramen v Ichiran" maxlength="100" required autocomplete="off" />
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="fin-amount" class="form-label">Částka JPY <span class="required" aria-label="povinné">*</span></label>
+                <input type="number" id="fin-amount" class="form-input" placeholder="2 400" min="1" max="99999999" required />
+              </div>
+              <div class="form-group">
+                <label for="fin-paidby" class="form-label">Zaplatil/a <span class="required" aria-label="povinné">*</span></label>
+                <select id="fin-paidby" class="form-select" required></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Rozdělit mezi <span class="required" aria-label="povinné">*</span></label>
+              <p class="form-hint" style="margin-bottom:var(--space-2)">Rovným dílem mezi zaškrtnuté členy</p>
+              <div id="fin-split-checkboxes" class="fin-split-checkboxes"></div>
+            </div>
+          </div>
+          <div class="inline-form__footer">
+            <button type="button" class="btn btn--ghost" id="fin-form-cancel">Zrušit</button>
+            <button type="submit" class="btn btn--primary" id="fin-form-submit">Přidat výdaj</button>
+          </div>
+        </form>
       </div>
 
       <div class="finance-tabs" role="tablist" aria-label="Sekce finance">
@@ -109,44 +146,6 @@ function buildShell() {
 
       <div id="fin-tab-settle" class="hidden" role="tabpanel">
         <div id="fin-settle-content"></div>
-      </div>
-    </div>
-
-    <!-- Modal: přidat výdaj -->
-    <div id="fin-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="fin-modal-title">
-      <div class="modal__backdrop" id="fin-modal-backdrop"></div>
-      <div class="modal__content">
-        <div class="modal__header">
-          <h2 class="modal__title" id="fin-modal-title">Přidat výdaj</h2>
-          <button class="modal__close" id="fin-modal-close" aria-label="Zavřít">✕</button>
-        </div>
-        <form id="fin-form" novalidate>
-          <div class="modal__body">
-            <div class="form-group">
-              <label for="fin-desc" class="form-label">Popis <span class="required" aria-label="povinné">*</span></label>
-              <input type="text" id="fin-desc" class="form-input" placeholder="Např. Ramen v Ichiran" maxlength="100" required autocomplete="off" />
-            </div>
-            <div class="form-row">
-              <div class="form-group">
-                <label for="fin-amount" class="form-label">Částka JPY <span class="required" aria-label="povinné">*</span></label>
-                <input type="number" id="fin-amount" class="form-input" placeholder="2 400" min="1" max="99999999" required />
-              </div>
-              <div class="form-group">
-                <label for="fin-paidby" class="form-label">Zaplatil/a <span class="required" aria-label="povinné">*</span></label>
-                <select id="fin-paidby" class="form-select" required></select>
-              </div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Rozdělit mezi <span class="required" aria-label="povinné">*</span></label>
-              <p class="form-hint" style="margin-bottom:var(--space-2)">Rovným dílem mezi zaškrtnuté členy</p>
-              <div id="fin-split-checkboxes" class="fin-split-checkboxes"></div>
-            </div>
-          </div>
-          <div class="modal__footer">
-            <button type="button" class="btn btn--ghost" id="fin-form-cancel">Zrušit</button>
-            <button type="submit" class="btn btn--primary" id="fin-form-submit">Přidat výdaj</button>
-          </div>
-        </form>
       </div>
     </div>
   `;
@@ -447,21 +446,33 @@ async function confirmDelete(expId) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   MODAL
+   INLINE FORM
    ════════════════════════════════════════════════════════════ */
 
-function openModal() {
+function openInlineForm() {
   _container?.querySelector('#fin-form')?.reset();
   fillPaidBySelect();
   fillSplitCheckboxes();
-  _container?.querySelector('#fin-modal')?.classList.remove('hidden');
-  _container?.querySelector('#fin-desc')?.focus();
-  document.body.style.overflow = 'hidden';
+
+  const form = _container?.querySelector('#fin-add-form');
+  if (!form) return;
+  form.hidden = false;
+  requestAnimationFrame(() => {
+    form.classList.add('inline-form--open');
+    setTimeout(() => {
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      _container?.querySelector('#fin-desc')?.focus();
+    }, 50);
+  });
+  _container?.querySelector('#fin-btn-add')?.classList.add('hidden');
 }
 
-function closeModal() {
-  _container?.querySelector('#fin-modal')?.classList.add('hidden');
-  document.body.style.overflow = '';
+function closeInlineForm() {
+  const form = _container?.querySelector('#fin-add-form');
+  if (!form) return;
+  form.classList.remove('inline-form--open');
+  setTimeout(() => { form.hidden = true; }, 300);
+  _container?.querySelector('#fin-btn-add')?.classList.remove('hidden');
 }
 
 async function handleFormSubmit(e) {
@@ -513,7 +524,7 @@ async function handleFormSubmit(e) {
       createdAt:          serverTimestamp(),
     });
     showToast('Výdaj přidán! 💰', 'success');
-    closeModal();
+    closeInlineForm();
   } catch (err) {
     console.error('[finance] addExpense:', err);
     showToast('Nepodařilo se uložit výdaj.', 'error');

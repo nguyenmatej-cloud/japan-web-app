@@ -37,13 +37,11 @@ export function render(container) {
   container.innerHTML = buildShell();
 
   container.querySelector('#td-btn-add')
-    ?.addEventListener('click', () => openModal());
-  container.querySelector('#td-modal-backdrop')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', () => openInlineForm());
   container.querySelector('#td-modal-close')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', closeInlineForm);
   container.querySelector('#td-form-cancel')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', closeInlineForm);
   container.querySelector('#td-form')
     ?.addEventListener('submit', handleFormSubmit);
 
@@ -57,8 +55,8 @@ export function render(container) {
 
   _onEsc = (e) => {
     if (e.key !== 'Escape') return;
-    const modal = _container?.querySelector('#td-modal');
-    if (modal && !modal.classList.contains('hidden')) closeModal();
+    const form = _container?.querySelector('#td-add-form');
+    if (form && form.classList.contains('inline-form--open')) closeInlineForm();
   };
   document.addEventListener('keydown', _onEsc);
 
@@ -77,7 +75,6 @@ function cleanup() {
   _unsub     = null;
   _container = null;
   _todos     = [];
-  document.body.style.overflow = '';
 }
 
 /* ── HTML Shell ──────────────────────────────────────────────── */
@@ -90,41 +87,22 @@ function buildShell() {
           <h1 class="page-header__title">✅ Skupinové úkoly</h1>
           <p class="page-header__subtitle">Přiřazuj úkoly, sleduj deadliny a označuj hotové</p>
         </div>
-        <button class="btn btn--primary" id="td-btn-add">+ Přidat úkol</button>
       </div>
 
-      <div class="todos-toolbar">
-        <div class="todo-status-filters" role="group" aria-label="Filtr stavu">
-          <button class="todo-filter-btn todo-filter-btn--active" data-filter="all">Vše</button>
-          <button class="todo-filter-btn" data-filter="open">Otevřené</button>
-          <button class="todo-filter-btn" data-filter="done">Hotové ✅</button>
-        </div>
-        <select class="form-select todo-filter-user" id="td-filter-user" aria-label="Filtr přiřazeného">
-          <option value="">Všichni členové</option>
-        </select>
-      </div>
+      <!-- CTA: Přidat úkol -->
+      <button class="add-cta" id="td-btn-add">
+        <span class="add-cta__plus">+</span>
+        <span class="add-cta__text">Přidat nový úkol</span>
+      </button>
 
-      <p class="wishlist-count" id="td-count" aria-live="polite"></p>
-
-      <div id="td-list" class="todo-list" role="list" aria-label="Seznam úkolů">
-        <div class="wl-skeletons" id="td-loading">
-          <div class="skeleton skeleton--card" style="height:88px"></div>
-          <div class="skeleton skeleton--card" style="height:88px"></div>
-          <div class="skeleton skeleton--card" style="height:88px"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Modal: přidat / upravit úkol -->
-    <div id="td-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="td-modal-title">
-      <div class="modal__backdrop" id="td-modal-backdrop"></div>
-      <div class="modal__content">
-        <div class="modal__header">
-          <h2 class="modal__title" id="td-modal-title">Přidat úkol</h2>
-          <button class="modal__close" id="td-modal-close" aria-label="Zavřít">✕</button>
+      <!-- Inline form: přidat / upravit úkol -->
+      <div class="inline-form" id="td-add-form" hidden>
+        <div class="inline-form__header">
+          <h2 class="inline-form__title" id="td-form-title">✅ Nový úkol</h2>
+          <button type="button" class="inline-form__close" id="td-modal-close" aria-label="Zavřít">×</button>
         </div>
         <form id="td-form" novalidate>
-          <div class="modal__body">
+          <div class="inline-form__body">
             <div class="form-group">
               <label for="td-title" class="form-label">Název <span class="required" aria-label="povinné">*</span></label>
               <input type="text" id="td-title" class="form-input" placeholder="Např. Koupit JR Pass" maxlength="100" required autocomplete="off" />
@@ -155,11 +133,32 @@ function buildShell() {
               </select>
             </div>
           </div>
-          <div class="modal__footer">
+          <div class="inline-form__footer">
             <button type="button" class="btn btn--ghost" id="td-form-cancel">Zrušit</button>
             <button type="submit" class="btn btn--primary" id="td-form-submit">Přidat úkol</button>
           </div>
         </form>
+      </div>
+
+      <div class="todos-toolbar">
+        <div class="todo-status-filters" role="group" aria-label="Filtr stavu">
+          <button class="todo-filter-btn todo-filter-btn--active" data-filter="all">Vše</button>
+          <button class="todo-filter-btn" data-filter="open">Otevřené</button>
+          <button class="todo-filter-btn" data-filter="done">Hotové ✅</button>
+        </div>
+        <select class="form-select todo-filter-user" id="td-filter-user" aria-label="Filtr přiřazeného">
+          <option value="">Všichni členové</option>
+        </select>
+      </div>
+
+      <p class="wishlist-count" id="td-count" aria-live="polite"></p>
+
+      <div id="td-list" class="todo-list" role="list" aria-label="Seznam úkolů">
+        <div class="wl-skeletons" id="td-loading">
+          <div class="skeleton skeleton--card" style="height:88px"></div>
+          <div class="skeleton skeleton--card" style="height:88px"></div>
+          <div class="skeleton skeleton--card" style="height:88px"></div>
+        </div>
       </div>
     </div>
   `;
@@ -341,7 +340,7 @@ function handleCardAction(btn) {
     case 'toggle': toggleDone(id); break;
     case 'edit': {
       const todo = _todos.find(t => t.id === id);
-      if (todo) openModal(todo);
+      if (todo) openInlineForm(todo);
       break;
     }
     case 'delete': confirmDelete(id); break;
@@ -377,17 +376,17 @@ async function confirmDelete(todoId) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   MODAL
+   INLINE FORM
    ════════════════════════════════════════════════════════════ */
 
-function openModal(todo = null) {
+function openInlineForm(todo = null) {
   _editingId = todo?.id ?? null;
 
-  const titleEl  = _container.querySelector('#td-modal-title');
+  const titleEl  = _container.querySelector('#td-form-title');
   const submitEl = _container.querySelector('#td-form-submit');
 
   if (todo) {
-    titleEl.textContent  = 'Upravit úkol';
+    titleEl.textContent  = '✏️ Upravit úkol';
     submitEl.textContent = 'Uložit změny';
     _container.querySelector('#td-title').value    = todo.title       ?? '';
     _container.querySelector('#td-desc').value     = todo.description ?? '';
@@ -403,21 +402,33 @@ function openModal(todo = null) {
       _container.querySelector('#td-deadline').value = '';
     }
   } else {
-    titleEl.textContent  = 'Přidat úkol';
+    titleEl.textContent  = '✅ Nový úkol';
     submitEl.textContent = 'Přidat úkol';
     _container.querySelector('#td-form').reset();
   }
 
   _container.querySelectorAll('#td-form .error').forEach(el => el.classList.remove('error'));
-  _container.querySelector('#td-modal').classList.remove('hidden');
-  _container.querySelector('#td-title').focus();
-  document.body.style.overflow = 'hidden';
+
+  const form = _container.querySelector('#td-add-form');
+  if (!form) return;
+  form.hidden = false;
+  requestAnimationFrame(() => {
+    form.classList.add('inline-form--open');
+    setTimeout(() => {
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      _container.querySelector('#td-title')?.focus();
+    }, 50);
+  });
+  _container.querySelector('#td-btn-add')?.classList.add('hidden');
 }
 
-function closeModal() {
-  _container?.querySelector('#td-modal')?.classList.add('hidden');
+function closeInlineForm() {
+  const form = _container?.querySelector('#td-add-form');
+  if (!form) return;
+  form.classList.remove('inline-form--open');
+  setTimeout(() => { form.hidden = true; }, 300);
   _editingId = null;
-  document.body.style.overflow = '';
+  _container?.querySelector('#td-btn-add')?.classList.remove('hidden');
 }
 
 async function handleFormSubmit(e) {
@@ -473,7 +484,7 @@ async function handleFormSubmit(e) {
       });
       showToast('Úkol přidán! ✅', 'success');
     }
-    closeModal();
+    closeInlineForm();
   } catch (err) {
     console.error('[todos] save:', err);
     showToast('Nepodařilo se uložit. Zkontroluj připojení.', 'error');

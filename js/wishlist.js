@@ -68,7 +68,7 @@ let _mobileView           = 'list';   // 'list' | 'map'
 let _editLocationId       = null;     // ideaId being drag-edited
 let _editLocationOriginalLL = null;   // L.LatLng before edit
 
-// Modal location picker
+// Inline form location picker
 let _pickerMap      = null;
 let _pickerMarker   = null;
 let _pickerLocation = null; // { name, lat, lng } | null
@@ -99,15 +99,13 @@ export function render(container) {
 
   container.innerHTML = buildShell();
 
-  /* Modal */
+  /* Inline form */
   container.querySelector('#wl-btn-add')
-    ?.addEventListener('click', () => openModal());
-  container.querySelector('#wl-modal-backdrop')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', () => openInlineForm());
   container.querySelector('#wl-modal-close')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', closeInlineForm);
   container.querySelector('#wl-form-cancel')
-    ?.addEventListener('click', closeModal);
+    ?.addEventListener('click', closeInlineForm);
   container.querySelector('#wl-form')
     ?.addEventListener('submit', handleFormSubmit);
 
@@ -146,7 +144,7 @@ export function render(container) {
       const btn = e.target.closest('[data-action]');
       if (btn) { handleCardAction(btn); return; }
       if (e.target.closest('#wl-reset-filters')) { resetFilters(); return; }
-      if (e.target.closest('#wl-empty-add')) { openModal(); return; }
+      if (e.target.closest('#wl-empty-add')) { openInlineForm(); return; }
       // Klik na kartu → fokus na mapě
       const card = e.target.closest('.idea-card[data-id]');
       if (card) focusIdeaOnMap(card.dataset.id);
@@ -178,8 +176,8 @@ export function render(container) {
   _onEsc = (e) => {
     if (e.key !== 'Escape') return;
     if (_editLocationId) { cancelLocationEdit(); return; }
-    const modal = _container?.querySelector('#wl-modal');
-    if (modal && !modal.classList.contains('hidden')) { closeModal(); return; }
+    const form = _container?.querySelector('#wl-add-form');
+    if (form && form.classList.contains('inline-form--open')) { closeInlineForm(); return; }
     const panel = _container?.querySelector('#wl-comments-panel');
     if (panel && !panel.classList.contains('hidden')) { closeCommentsPanel(); }
   };
@@ -201,7 +199,6 @@ function cleanup() {
   _unsubIdeas = null;
   _unsubComments?.();
   _unsubComments = null;
-  document.body.style.overflow = '';
 
   if (_map) {
     _map.remove();
@@ -232,92 +229,22 @@ function buildShell() {
           <h1 class="page-header__title">⭐ Skupinový Wishlist</h1>
           <p class="page-header__subtitle">Nápady na aktivity, jídlo a místa v Japonsku</p>
         </div>
-        <button class="btn btn--primary" id="wl-btn-add">+ Přidat nápad</button>
       </div>
 
-      <div class="wishlist-toolbar" role="search" aria-label="Filtry a řazení">
-        <div class="wishlist-filters">
-          <select class="form-select wishlist-filter-select" id="wl-filter-category" aria-label="Filtr kategorie">
-            <option value="">Všechny kategorie</option>
-            ${categoryOptions}
-          </select>
-          <select class="form-select wishlist-filter-select" id="wl-filter-priority" aria-label="Filtr priority">
-            <option value="">Všechny priority</option>
-            ${priorityOptions}
-          </select>
-          <select class="form-select wishlist-filter-select" id="wl-filter-author" aria-label="Filtr autora">
-            <option value="">Všichni autoři</option>
-          </select>
-          <select class="form-select wishlist-filter-select" id="wl-filter-city" aria-label="Filtr města">
-            <option value="">Všechna města</option>
-          </select>
-        </div>
-        <select class="form-select wishlist-sort-select" id="wl-sort" aria-label="Řazení">
-          <option value="newest">🕐 Nejnovější</option>
-          <option value="likes">👍 Nejvíc lajků</option>
-          <option value="cosigns">✋ Nejvíc co-signů</option>
-          <option value="alpha">🔤 Abecedně</option>
-        </select>
-      </div>
+      <!-- CTA: Přidat nápad -->
+      <button class="add-cta" id="wl-btn-add">
+        <span class="add-cta__plus">+</span>
+        <span class="add-cta__text">Přidat nový nápad</span>
+      </button>
 
-      <!-- Mobile: přepínač seznam / mapa (skryto na tablet+) -->
-      <div class="wl-view-toggle" id="wl-view-toggle" role="group" aria-label="Přepnout zobrazení">
-        <button class="wl-toggle-btn wl-toggle-btn--active" data-wl-view="list">📋 Seznam</button>
-        <button class="wl-toggle-btn" data-wl-view="map">🗺️ Mapa</button>
-      </div>
-
-      <!-- Tělo stránky: seznam + mapa -->
-      <div class="wl-body" id="wl-body">
-
-        <!-- Levý sloupec: seznam -->
-        <div class="wl-list-col" id="wl-list-col">
-          <p class="wishlist-count" id="wl-count" aria-live="polite"></p>
-          <div class="wishlist-grid" id="wl-grid" role="list" aria-label="Seznam nápadů">
-            <div class="wl-skeletons" id="wl-loading" aria-label="Načítání…">
-              <div class="skeleton skeleton--card" style="height:200px"></div>
-              <div class="skeleton skeleton--card" style="height:200px"></div>
-              <div class="skeleton skeleton--card" style="height:200px"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pravý sloupec: mapa -->
-        <div class="wl-map-col" id="wl-map-col">
-          <div class="wl-map-presets" id="wl-map-presets" role="group" aria-label="Přiblížit na oblast">
-            <button class="wl-preset-btn" data-preset="japan">🌐 Japonsko</button>
-            <button class="wl-preset-btn" data-preset="tokyo">🗼 Tokio</button>
-            <button class="wl-preset-btn" data-preset="kyoto">⛩️ Kjóto</button>
-            <button class="wl-preset-btn" data-preset="osaka">🏯 Ósaka</button>
-          </div>
-          <div class="wl-map-wrap">
-            <div class="wl-map" id="wl-map" aria-label="Interaktivní mapa Japonska"></div>
-            <div class="wl-map-empty hidden" id="wl-map-empty" aria-live="polite">
-              <span aria-hidden="true">🗺️</span>
-              <p>Přidej nápadům města, ať je vidíš na mapě!</p>
-            </div>
-            <div class="map-edit-banner hidden" id="wl-edit-banner" role="status">
-              <span class="map-edit-banner__msg">✋ Přetáhni pin na správné místo</span>
-              <div class="map-edit-banner__actions">
-                <button class="btn btn--xs btn--primary" id="wl-edit-confirm">✓ Uložit</button>
-                <button class="btn btn--xs btn--ghost" id="wl-edit-cancel">✕ Zrušit</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- Modal: přidat / upravit nápad -->
-    <div id="wl-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="wl-modal-title">
-      <div class="modal__backdrop" id="wl-modal-backdrop"></div>
-      <div class="modal__content">
-        <div class="modal__header">
-          <h2 class="modal__title" id="wl-modal-title">Přidat nápad</h2>
-          <button class="modal__close" id="wl-modal-close" aria-label="Zavřít">✕</button>
+      <!-- Inline form: přidat / upravit nápad -->
+      <div class="inline-form" id="wl-add-form" hidden>
+        <div class="inline-form__header">
+          <h2 class="inline-form__title" id="wl-form-title">⭐ Nový nápad</h2>
+          <button type="button" class="inline-form__close" id="wl-modal-close" aria-label="Zavřít">×</button>
         </div>
         <form id="wl-form" novalidate>
-          <div class="modal__body">
+          <div class="inline-form__body">
             <div class="form-group">
               <label for="wl-title" class="form-label">Název <span class="required" aria-label="povinné">*</span></label>
               <input type="text" id="wl-title" class="form-input" placeholder="Např. Ramen v Ichiran" maxlength="100" required autocomplete="off" />
@@ -410,11 +337,83 @@ function buildShell() {
               </div>
             </div>
           </div>
-          <div class="modal__footer">
+          <div class="inline-form__footer">
             <button type="button" class="btn btn--ghost" id="wl-form-cancel">Zrušit</button>
             <button type="submit" class="btn btn--primary" id="wl-form-submit">Přidat nápad</button>
           </div>
         </form>
+      </div>
+
+      <div class="wishlist-toolbar" role="search" aria-label="Filtry a řazení">
+        <div class="wishlist-filters">
+          <select class="form-select wishlist-filter-select" id="wl-filter-category" aria-label="Filtr kategorie">
+            <option value="">Všechny kategorie</option>
+            ${categoryOptions}
+          </select>
+          <select class="form-select wishlist-filter-select" id="wl-filter-priority" aria-label="Filtr priority">
+            <option value="">Všechny priority</option>
+            ${priorityOptions}
+          </select>
+          <select class="form-select wishlist-filter-select" id="wl-filter-author" aria-label="Filtr autora">
+            <option value="">Všichni autoři</option>
+          </select>
+          <select class="form-select wishlist-filter-select" id="wl-filter-city" aria-label="Filtr města">
+            <option value="">Všechna města</option>
+          </select>
+        </div>
+        <select class="form-select wishlist-sort-select" id="wl-sort" aria-label="Řazení">
+          <option value="newest">🕐 Nejnovější</option>
+          <option value="likes">👍 Nejvíc lajků</option>
+          <option value="cosigns">✋ Nejvíc co-signů</option>
+          <option value="alpha">🔤 Abecedně</option>
+        </select>
+      </div>
+
+      <!-- Mobile: přepínač seznam / mapa (skryto na tablet+) -->
+      <div class="wl-view-toggle" id="wl-view-toggle" role="group" aria-label="Přepnout zobrazení">
+        <button class="wl-toggle-btn wl-toggle-btn--active" data-wl-view="list">📋 Seznam</button>
+        <button class="wl-toggle-btn" data-wl-view="map">🗺️ Mapa</button>
+      </div>
+
+      <!-- Tělo stránky: seznam + mapa -->
+      <div class="wl-body" id="wl-body">
+
+        <!-- Levý sloupec: seznam -->
+        <div class="wl-list-col" id="wl-list-col">
+          <p class="wishlist-count" id="wl-count" aria-live="polite"></p>
+          <div class="wishlist-grid" id="wl-grid" role="list" aria-label="Seznam nápadů">
+            <div class="wl-skeletons" id="wl-loading" aria-label="Načítání…">
+              <div class="skeleton skeleton--card" style="height:200px"></div>
+              <div class="skeleton skeleton--card" style="height:200px"></div>
+              <div class="skeleton skeleton--card" style="height:200px"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pravý sloupec: mapa -->
+        <div class="wl-map-col" id="wl-map-col">
+          <div class="wl-map-presets" id="wl-map-presets" role="group" aria-label="Přiblížit na oblast">
+            <button class="wl-preset-btn" data-preset="japan">🌐 Japonsko</button>
+            <button class="wl-preset-btn" data-preset="tokyo">🗼 Tokio</button>
+            <button class="wl-preset-btn" data-preset="kyoto">⛩️ Kjóto</button>
+            <button class="wl-preset-btn" data-preset="osaka">🏯 Ósaka</button>
+          </div>
+          <div class="wl-map-wrap">
+            <div class="wl-map" id="wl-map" aria-label="Interaktivní mapa Japonska"></div>
+            <div class="wl-map-empty hidden" id="wl-map-empty" aria-live="polite">
+              <span aria-hidden="true">🗺️</span>
+              <p>Přidej nápadům města, ať je vidíš na mapě!</p>
+            </div>
+            <div class="map-edit-banner hidden" id="wl-edit-banner" role="status">
+              <span class="map-edit-banner__msg">✋ Přetáhni pin na správné místo</span>
+              <div class="map-edit-banner__actions">
+                <button class="btn btn--xs btn--primary" id="wl-edit-confirm">✓ Uložit</button>
+                <button class="btn btn--xs btn--ghost" id="wl-edit-cancel">✕ Zrušit</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
 
@@ -437,17 +436,17 @@ function buildShell() {
 }
 
 /* ════════════════════════════════════════════════════════════
-   MODAL
+   INLINE FORM
    ════════════════════════════════════════════════════════════ */
 
-function openModal(idea = null) {
+function openInlineForm(idea = null) {
   _editingId = idea?.id ?? null;
 
-  const titleEl  = _container.querySelector('#wl-modal-title');
+  const titleEl  = _container.querySelector('#wl-form-title');
   const submitEl = _container.querySelector('#wl-form-submit');
 
   if (idea) {
-    titleEl.textContent  = 'Upravit nápad';
+    titleEl.textContent  = '✏️ Upravit nápad';
     submitEl.textContent = 'Uložit změny';
     _container.querySelector('#wl-title').value    = idea.title         ?? '';
     _container.querySelector('#wl-desc').value     = idea.description   ?? '';
@@ -456,36 +455,53 @@ function openModal(idea = null) {
     _container.querySelector('#wl-price').value    = idea.priceJpy      ?? '';
     _container.querySelector('#wl-duration').value = idea.durationHours ?? '';
   } else {
-    titleEl.textContent  = 'Přidat nápad';
+    titleEl.textContent  = '⭐ Nový nápad';
     submitEl.textContent = 'Přidat nápad';
     _container.querySelector('#wl-form').reset();
   }
 
   _container.querySelectorAll('#wl-form .error').forEach(el => el.classList.remove('error'));
-  _container.querySelector('#wl-modal').classList.remove('hidden');
-  _container.querySelector('#wl-title').focus();
-  document.body.style.overflow = 'hidden';
 
-  // Init picker map after two animation frames (needs visible DOM for correct dimensions)
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    destroyPickerMap();
-    initPickerMap();
-    if (idea) {
-      if (idea.pinLat != null && idea.pinLng != null) {
-        setPickerLocation(idea.pinLat, idea.pinLng, idea.city ?? `${idea.pinLat.toFixed(5)}, ${idea.pinLng.toFixed(5)}`);
-      } else if (idea.city) {
-        const si = _container?.querySelector('#lp-search');
-        if (si) si.value = idea.city;
+  const form = _container.querySelector('#wl-add-form');
+  if (!form) return;
+
+  form.hidden = false;
+  requestAnimationFrame(() => {
+    form.classList.add('inline-form--open');
+    setTimeout(() => {
+      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      _container.querySelector('#wl-title')?.focus();
+    }, 80);
+    // Init picker map after element is laid out
+    requestAnimationFrame(() => {
+      destroyPickerMap();
+      initPickerMap();
+      if (idea) {
+        if (idea.pinLat != null && idea.pinLng != null) {
+          setPickerLocation(idea.pinLat, idea.pinLng, idea.city ?? `${idea.pinLat.toFixed(5)}, ${idea.pinLng.toFixed(5)}`);
+        } else if (idea.city) {
+          const si = _container?.querySelector('#lp-search');
+          if (si) si.value = idea.city;
+        }
       }
-    }
-  }));
+      // Invalidate after max-height animation completes
+      setTimeout(() => _pickerMap?.invalidateSize(), 400);
+    });
+  });
+
+  _container.querySelector('#wl-btn-add')?.classList.add('hidden');
 }
 
-function closeModal() {
+function closeInlineForm() {
   destroyPickerMap();
-  _container?.querySelector('#wl-modal')?.classList.add('hidden');
+
+  const form = _container?.querySelector('#wl-add-form');
+  if (!form) return;
+  form.classList.remove('inline-form--open');
+  setTimeout(() => { form.hidden = true; }, 300);
+
   _editingId = null;
-  document.body.style.overflow = '';
+  _container?.querySelector('#wl-btn-add')?.classList.remove('hidden');
 }
 
 async function handleFormSubmit(e) {
@@ -546,7 +562,7 @@ async function handleFormSubmit(e) {
       });
       showToast('Nápad přidán! ⭐', 'success');
     }
-    closeModal();
+    closeInlineForm();
   } catch (err) {
     console.error('[wishlist] save error:', err);
     showToast('Nepodařilo se uložit. Zkontroluj připojení.', 'error');
@@ -815,15 +831,15 @@ function handleCardAction(btn) {
     case 'comments': openComments(id);  break;
     case 'edit': {
       const idea = _ideasCache.find(i => i.id === id);
-      if (idea) openModal(idea);
+      if (idea) openInlineForm(idea);
       break;
     }
     case 'delete': confirmDelete(id); break;
     case 'add-location': {
       const idea = _ideasCache.find(i => i.id === id);
       if (idea) {
-        openModal(idea);
-        requestAnimationFrame(() => _container?.querySelector('#lp-search')?.focus());
+        openInlineForm(idea);
+        setTimeout(() => _container?.querySelector('#lp-search')?.focus(), 200);
       }
       break;
     }
@@ -1172,7 +1188,7 @@ function applyMapPreset(preset) {
 }
 
 /* ════════════════════════════════════════════════════════════
-   LOCATION PICKER (modal mini-mapa)
+   LOCATION PICKER (inline form mini-mapa)
    ════════════════════════════════════════════════════════════ */
 
 function initPickerMap() {
