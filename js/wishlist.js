@@ -1052,30 +1052,25 @@ async function calculateAllDistances() {
           coords.lat, coords.lng
         );
 
-        let walk = null, walkMin = null, drive = null, driveMin = null, transitMin = null;
+        let walk = null, walkMin = null, transitMin = null;
 
-        // Driving – OSRM (spolehlivé)
-        const driveRoute = straight > 2000
+        // Driving OSRM – jen pro transit odhad, auto se nezobrazuje
+        const driveRoute = straight > 1000
           ? await fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, coords.lat, coords.lng, 'driving')
           : null;
 
-        if (driveRoute) {
-          drive    = driveRoute.distance;
-          driveMin = Math.round(driveRoute.duration / 60);
-        }
-
-        // Walking – matematický odhad 4.5 km/h (OSRM foot na public demo není spolehlivé)
+        // Walking – 3.8 km/h (realistické pro Tokio: semafory, hustý provoz, čekání)
         if (straight < 15000) {
           const walkingDist = driveRoute ? driveRoute.distance : straight * 1.25;
           walk    = walkingDist;
-          walkMin = Math.round((walkingDist / 1000) / 4.5 * 60);
+          walkMin = Math.round((walkingDist / 1000) / 3.8 * 60);
         }
 
         // Transit – odhad pro Tokio
         const transitSec = driveRoute ? estimateTransitTime(straight, driveRoute.duration) : null;
         if (transitSec != null) transitMin = Math.round(transitSec / 60);
 
-        _distanceData.set(idea.id, { straight, walk, walkMin, drive, driveMin, transitMin });
+        _distanceData.set(idea.id, { straight, walk, walkMin, transitMin });
 
         done++;
         if (btn) btn.textContent = `⏳ ${done} / ${total}`;
@@ -1130,12 +1125,6 @@ function renderDistanceInfo(ideaId) {
 
   if (d.transitMin != null) {
     items.push(`<span class="distance-info__item">🚇 ${formatDuration(d.transitMin)}</span>`);
-  }
-
-  if (d.drive != null) {
-    const dist = formatDistance(d.drive);
-    const time = formatDuration(d.driveMin);
-    items.push(`<span class="distance-info__item">🚗 ${dist}${time ? ` · ${time}` : ''}</span>`);
   }
 
   if (items.length === 0) return '';
