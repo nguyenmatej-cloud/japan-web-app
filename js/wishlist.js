@@ -908,80 +908,160 @@ const _getMapTileUrl = () => 'https://{s}.basemaps.cartocdn.com/rastertiles/voya
 
 const _TILE_PROVIDERS = [
   {
+    name: 'OSM (HTTPS)',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: { attribution: '&copy; OSM', maxZoom: 19, crossOrigin: 'anonymous' },
+  },
+  {
     name: 'CARTO Voyager',
     url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-    options: { attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20, crossOrigin: true },
+    options: { attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20, crossOrigin: 'anonymous' },
   },
   {
-    name: 'OpenStreetMap',
-    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-    options: { attribution: '&copy; OpenStreetMap', maxZoom: 19, crossOrigin: true },
-  },
-  {
-    name: 'Stadia Light',
+    name: 'Stadia',
     url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
-    options: { attribution: '&copy; Stadia Maps &copy; OSM', maxZoom: 20, crossOrigin: true },
+    options: { attribution: '&copy; Stadia &copy; OSM', maxZoom: 20, crossOrigin: 'anonymous' },
   },
   {
     name: 'Wikimedia',
     url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
-    options: { attribution: '&copy; Wikimedia &copy; OSM', maxZoom: 18, crossOrigin: true },
+    options: { attribution: '&copy; Wikimedia &copy; OSM', maxZoom: 18, crossOrigin: 'anonymous' },
   },
 ];
-
-function _tryTileProvider(map, startIndex = 0) {
-  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  let idx = isIOS ? Math.max(startIndex, 1) : startIndex;
-  let tileErrorCount = 0;
-
-  if (isIOS && startIndex === 0) console.log('[map] iOS detected, starting with OSM');
-
-  function tryIdx() {
-    if (_mapTileLayer) { map.removeLayer(_mapTileLayer); _mapTileLayer = null; }
-    if (idx >= _TILE_PROVIDERS.length) {
-      console.error('[map] All tile providers failed');
-      const el = map.getContainer();
-      if (el) {
-        el.style.background = '#E5E7EB';
-        const err = document.createElement('div');
-        err.className = 'map-load-error';
-        err.innerHTML = '🗺️ Mapa se nepodařilo načíst<br><small>Zkontroluj připojení k internetu</small>';
-        el.appendChild(err);
-      }
-      return;
-    }
-    const p = _TILE_PROVIDERS[idx];
-    console.log(`[map] Trying provider: ${p.name}`);
-    tileErrorCount = 0;
-    _mapTileLayer = L.tileLayer(p.url, p.options);
-    _mapTileLayer.on('tileerror', () => {
-      tileErrorCount++;
-      if (tileErrorCount >= 5) {
-        console.warn(`[map] ${p.name} failed, trying next`);
-        idx++;
-        tryIdx();
-      }
-    });
-    _mapTileLayer.on('tileload', () => { if (tileErrorCount > 0) tileErrorCount = 0; });
-    _mapTileLayer.addTo(map);
-  }
-  tryIdx();
-}
 
 function initMap() {
   if (!window.L) { console.warn('[wishlist] Leaflet není načten'); return; }
   const mapEl = _container?.querySelector('#wl-map');
   if (!mapEl || _map) return;
 
-  _map = L.map(mapEl, {
-    center: [35.6762, 139.6503],
-    zoom: 11,
-    zoomControl: false,
-  });
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
+  /* ── DEBUG OVERLAY ─────────────────────────────────────── */
+  const dbgWrap = mapEl.parentElement || mapEl;
+  if (dbgWrap !== mapEl) dbgWrap.style.position = 'relative';
+
+  const overlay = document.createElement('div');
+  overlay.id = 'map-debug-overlay';
+  overlay.style.cssText = [
+    'position:absolute', 'top:10px', 'left:10px', 'right:10px',
+    'max-height:200px', 'background:rgba(0,0,0,0.9)', 'color:#00ff00',
+    'font-family:-apple-system,monospace', 'font-size:10px',
+    'padding:8px', 'border-radius:8px', 'overflow-y:auto',
+    'z-index:9999', 'border:1px solid #00ff00',
+    'line-height:1.3', 'box-sizing:border-box',
+  ].join(';');
+
+  overlay.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;
+                margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid rgba(0,255,0,.3)">
+      <strong style="color:#00ff00;font-size:11px">🐛 MAP DEBUG</strong>
+      <button id="dbg-close" style="background:#ff4444;color:white;border:none;
+              padding:2px 8px;font-size:10px;cursor:pointer;border-radius:4px">SKRÝT</button>
+    </div>
+    <div id="dbg-content"></div>`;
+  dbgWrap.appendChild(overlay);
+
+  const dbgContent = overlay.querySelector('#dbg-content');
+  setTimeout(() => overlay.querySelector('#dbg-close')?.addEventListener('click', () => { overlay.style.display = 'none'; }), 100);
+
+  function dbg(msg, type = 'info') {
+    const c = { info: '#00ff00', error: '#ff4444', warn: '#ffaa00', success: '#88ff88' };
+    const t = new Date().toISOString().substr(11, 8);
+    const d = document.createElement('div');
+    d.style.color = c[type] ?? '#00ff00';
+    d.textContent = `[${t}] ${msg}`;
+    dbgContent.appendChild(d);
+    dbgContent.scrollTop = dbgContent.scrollHeight;
+    console.log(`[map-debug] ${msg}`);
+  }
+
+  const ua = navigator.userAgent;
+  dbg(`UA: ${ua.length > 70 ? ua.substr(0, 70) + '...' : ua}`);
+  dbg(`isIOS: ${isIOS} | Leaflet: ${L.version}`);
+  dbg(`URL: ${window.location.host}`);
+
+  /* ── MAP INIT ──────────────────────────────────────────── */
+  _map = L.map(mapEl, { center: [35.6762, 139.6503], zoom: 11, zoomControl: false });
   L.control.zoom({ position: 'topright' }).addTo(_map);
-  _tryTileProvider(_map, 0);
+
+  let provIdx = 0;
+  let tileErrorCount = 0;
+  let tileLoadCount  = 0;
+  let firstLoaded    = false;
+  let provTimeout    = null;
+
+  function tryProvider() {
+    if (provTimeout) { clearTimeout(provTimeout); provTimeout = null; }
+    if (_mapTileLayer) { _map.removeLayer(_mapTileLayer); _mapTileLayer = null; }
+
+    if (provIdx >= _TILE_PROVIDERS.length) {
+      dbg('❌ ALL PROVIDERS FAILED – pošli screenshot autorovi', 'error');
+      const el = _map.getContainer();
+      if (el) {
+        el.style.background = '#E5E7EB';
+        const e = document.createElement('div');
+        e.className = 'map-load-error';
+        e.innerHTML = '🗺️ Mapa se nepodařilo načíst<br><small>Zkontroluj připojení</small>';
+        el.appendChild(e);
+      }
+      return;
+    }
+
+    const p = _TILE_PROVIDERS[provIdx];
+    tileErrorCount = tileLoadCount = 0;
+    firstLoaded = false;
+    dbg(`🔄 Trying: ${p.name}`, 'info');
+
+    _mapTileLayer = L.tileLayer(p.url, p.options);
+
+    _mapTileLayer.on('tileloadstart', (e) => {
+      if (tileLoadCount < 2) dbg(`  → ${(e.tile.src || e.tile.currentSrc || '?').substr(0, 70)}`);
+    });
+
+    _mapTileLayer.on('tileload', () => {
+      tileLoadCount++;
+      if (!firstLoaded) {
+        firstLoaded = true;
+        dbg(`✅ First tile OK! (${p.name})`, 'success');
+        if (provTimeout) { clearTimeout(provTimeout); provTimeout = null; }
+      }
+      if (tileLoadCount === 5) dbg('✅ 5 tiles loaded – provider works!', 'success');
+    });
+
+    _mapTileLayer.on('tileerror', (e) => {
+      tileErrorCount++;
+      if (tileErrorCount <= 3) dbg(`❌ Tile error: ${(e.tile?.src || '?').substr(0, 60)}`, 'error');
+      if (tileErrorCount >= 5 && !firstLoaded) {
+        dbg(`💔 ${p.name} failed (5 errors)`, 'warn');
+        provIdx++;
+        tryProvider();
+      }
+    });
+
+    provTimeout = setTimeout(() => {
+      if (!firstLoaded) {
+        dbg(`⏱ Timeout ${p.name} (8s, loaded:${tileLoadCount}, err:${tileErrorCount})`, 'warn');
+        provIdx++;
+        tryProvider();
+      }
+    }, 8000);
+
+    _mapTileLayer.addTo(_map);
+
+    /* Direct fetch test on first provider */
+    if (provIdx === 0) {
+      const testUrl = p.url
+        .replace('{z}', '5').replace('{x}', '28').replace('{y}', '12')
+        .replace('{s}', 'a').replace('{r}', '');
+      dbg(`🔍 fetch: ${testUrl.substr(0, 70)}`);
+      fetch(testUrl, { mode: 'cors' })
+        .then(r => dbg(`  HTTP ${r.status} ${r.statusText}`, r.ok ? 'success' : 'error'))
+        .catch(err => dbg(`  ❌ ${err.message}`, 'error'));
+    }
+  }
+
+  tryProvider();
   _addLocateControl(_map);
 }
 
