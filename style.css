@@ -4714,3 +4714,192 @@ button, .btn, [role="button"] {
   background: color-mix(in srgb, var(--color-indigo) 20%, transparent);
   color: #a5b4fc;
 }
+
+/* ─── 55. Live Location ────────────────────────────────────── */
+
+.live-control { margin-top: 4px !important; }
+
+.live-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 32px !important;
+  height: 32px !important;
+  font-size: 16px !important;
+  cursor: pointer;
+  text-decoration: none !important;
+  background: white !important;
+  transition: background 150ms, transform 150ms;
+}
+
+.live-btn:hover { background: #F5F5F7 !important; transform: scale(1.05); }
+
+.live-btn--active {
+  background: #34C759 !important;
+  animation: live-btn-pulse 2s ease-in-out infinite;
+}
+
+.live-btn--loading { opacity: .6; cursor: wait; pointer-events: none; }
+
+@keyframes live-btn-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(52,199,89,.4); }
+  50%      { box-shadow: 0 0 0 8px rgba(52,199,89,0); }
+}
+
+/* Live banner */
+.live-banner {
+  position: fixed;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  z-index: 9500;
+  opacity: 0;
+  transition: transform 350ms cubic-bezier(.34,1.56,.64,1), opacity 350ms ease;
+  pointer-events: none;
+}
+
+.live-banner--visible {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+  pointer-events: all;
+}
+
+.live-banner__content {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  background: linear-gradient(135deg, #34C759, #1FB050);
+  color: white;
+  border-radius: 100px;
+  box-shadow: 0 8px 24px rgba(52,199,89,.4);
+  font-weight: 600;
+  font-size: .88rem;
+  white-space: nowrap;
+}
+
+.live-banner__pulse {
+  width: 10px;
+  height: 10px;
+  background: white;
+  border-radius: 50%;
+  flex-shrink: 0;
+  animation: live-pulse-dot 1.5s ease-in-out infinite;
+}
+
+@keyframes live-pulse-dot {
+  0%,100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,255,255,.7); }
+  50%      { transform: scale(1.1); box-shadow: 0 0 0 7px rgba(255,255,255,0); }
+}
+
+.live-banner__text { flex: 1; }
+
+.live-banner__btn {
+  background: rgba(255,255,255,.25);
+  color: white;
+  border: 1px solid rgba(255,255,255,.4);
+  padding: 4px 12px;
+  border-radius: 100px;
+  font-size: .82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms, transform 150ms;
+}
+
+.live-banner__btn:hover { background: rgba(255,255,255,.4); transform: scale(1.05); }
+
+/* Live dot na avataru v headeru */
+.live-status-dot {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 11px;
+  height: 11px;
+  background: #34C759;
+  border: 2px solid white;
+  border-radius: 50%;
+  animation: live-dot-pulse 2s ease-in-out infinite;
+  z-index: 10;
+}
+
+[data-theme="dark"] .live-status-dot { border-color: #1C1C1E; }
+
+@keyframes live-dot-pulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(52,199,89,.7); }
+  50%      { box-shadow: 0 0 0 5px rgba(52,199,89,0); }
+}
+
+/* Snapchat-style avatar bubble markery */
+.live-member-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.live-member-marker__bubble {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border: 2.5px solid #34C759;
+  border-radius: 18px;
+  padding: 4px 10px 4px 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  box-shadow: 0 4px 14px rgba(52,199,89,.3);
+  white-space: nowrap;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #1D1D1F;
+}
+
+.live-member-marker__bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -7px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 7px solid transparent;
+  border-top-color: #34C759;
+  border-bottom: none;
+}
+
+.live-member-marker__avatar { font-size: 1.1rem; line-height: 1; }
+
+.live-member-marker__name {
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-member-marker__pin {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+}
+
+.live-member-marker__pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(52,199,89,.4);
+  animation: live-pin-pulse 2s ease-out infinite;
+}
+
+@keyframes live-pin-pulse {
+  0%   { transform: scale(1); opacity: .6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+.live-member-marker__dot {
+  position: absolute;
+  inset: 2px;
+  background: #34C759;
+  border: 2px solid white;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(52,199,89,.5);
+}

@@ -3,6 +3,7 @@
  */
 import { db } from './firebase-config.js';
 import { state, showToast, showConfirm } from './app.js';
+import { toggleLiveLocation, isLiveActive, attachMap, detachMap } from './live-location.js';
 import {
   collection, doc, addDoc, updateDoc, deleteDoc,
   query, orderBy, onSnapshot, serverTimestamp,
@@ -214,6 +215,7 @@ function cleanup() {
   _unsubComments = null;
 
   if (_map) {
+    detachMap();
     _map.remove();
     _map = null;
   }
@@ -1164,6 +1166,8 @@ function initMap() {
   ).addTo(_map);
 
   _addLocateControl(_map);
+  _addLiveLocationControl(_map);
+  attachMap(_map); // re-připojí live markery pokud je live aktivní
 }
 
 function _addLocateControl(map) {
@@ -1246,6 +1250,43 @@ function _addLocateControl(map) {
     },
   });
   map.addControl(new LocateControl());
+}
+
+function _addLiveLocationControl(map) {
+  const LiveControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control live-control');
+      const btn  = L.DomUtil.create('a', 'live-btn', wrap);
+      btn.href = '#';
+      btn.setAttribute('role', 'button');
+
+      const refresh = () => {
+        const active = isLiveActive();
+        btn.innerHTML  = active ? '🟢' : '⚫';
+        btn.title      = active ? 'Vypnout sdílení polohy' : 'Zapnout sdílení polohy (Live)';
+        btn.setAttribute('aria-label', btn.title);
+        btn.classList.toggle('live-btn--active', active);
+      };
+      refresh();
+
+      L.DomEvent.on(btn, 'click', async (e) => {
+        L.DomEvent.preventDefault(e);
+        L.DomEvent.stopPropagation(e);
+        btn.classList.add('live-btn--loading');
+        await toggleLiveLocation(map);
+        btn.classList.remove('live-btn--loading');
+        refresh();
+      });
+
+      // Sync tlačítka každé 3 s (banner/stop může změnit stav)
+      const intervalId = setInterval(refresh, 3_000);
+      btn._liveRefreshId = intervalId;
+
+      return wrap;
+    },
+  });
+  map.addControl(new LiveControl());
 }
 
 function createMarkerIcon(priority, number = null) {
