@@ -29,6 +29,7 @@ const AVATAR_OPTIONS = [
 
 const SIDEBAR_NAV = [
   { route: 'dashboard',   label: 'Dashboard',    emoji: '🏠' },
+  { route: 'map',         label: 'Mapa',          emoji: '🗺️' },
   { route: 'wishlist',    label: 'Wishlist',      emoji: '⭐' },
   { route: 'members',     label: 'Členové',        emoji: '👥' },
   { route: 'itinerary',   label: 'Itinerář',      emoji: '📅' },
@@ -171,6 +172,7 @@ function showAppUI() {
   if (!router) {
     router = new Router({
       'dashboard':    () => import('./dashboard.js'),
+      'map':          () => import('./map-page.js'),
       'wishlist':     () => import('./wishlist.js'),
       'itinerary':    () => import('./itinerary.js'),
       'todos':        () => import('./todos.js'),

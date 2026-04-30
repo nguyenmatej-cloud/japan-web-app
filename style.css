@@ -4903,3 +4903,342 @@ button, .btn, [role="button"] {
   border-radius: 50%;
   box-shadow: 0 2px 6px rgba(52,199,89,.5);
 }
+
+/* ─── 56. Map Page ─────────────────────────────────────────── */
+
+.map-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--header-height, 60px) - 48px);
+  gap: 10px;
+  min-height: 0;
+}
+
+.map-page__header { flex-shrink: 0; }
+
+.map-page__title {
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  font-weight: 900;
+  letter-spacing: -.03em;
+  margin-bottom: 2px;
+}
+
+.map-page__subtitle { font-size: .85rem; color: var(--text-secondary); }
+
+.map-page__toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.map-layers {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.map-layer-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: var(--bg-surface-2, #F5F5F7);
+  border: 1px solid var(--border, #E5E5E7);
+  border-radius: 100px;
+  font-size: .8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+
+.map-layer-btn:hover { background: var(--bg-surface-3, #EBEBED); color: var(--text); }
+
+.map-layer-btn--active {
+  background: var(--color-blue, #0A84FF) !important;
+  color: white !important;
+  border-color: var(--color-blue, #0A84FF) !important;
+}
+
+.map-categories {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+.map-categories::-webkit-scrollbar { display: none; }
+
+.map-cat-chip {
+  flex-shrink: 0;
+  padding: 4px 11px;
+  background: transparent;
+  border: 1px solid var(--border, #E5E5E7);
+  border-radius: 100px;
+  font-size: .78rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+  white-space: nowrap;
+}
+.map-cat-chip:hover { background: var(--bg-surface-2); color: var(--text); }
+.map-cat-chip--active {
+  background: var(--text);
+  color: var(--bg-base);
+  border-color: var(--text);
+}
+
+.map-page__map-wrap {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--border, #E5E5E7);
+  box-shadow: 0 4px 16px rgba(0,0,0,.08);
+}
+
+.japan-map { width: 100%; height: 100%; background: #F5F5F0; }
+
+.map-page__legend {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+  font-size: .78rem;
+}
+
+.map-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  background: var(--bg-surface-2);
+  border-radius: 100px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.map-legend__item--live { color: #34C759; background: rgba(52,199,89,.1); }
+
+/* Animované tip markery */
+.tip-marker { background: transparent !important; border: none !important; }
+
+.tip-marker__bubble {
+  position: absolute;
+  inset: 0;
+  background: white;
+  border: 3px solid var(--cat-color, #0A84FF);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0,0,0,.15);
+  cursor: pointer;
+  animation: tip-float 3s ease-in-out infinite;
+  transition: transform .2s cubic-bezier(.34,1.56,.64,1);
+}
+
+.tip-marker__bubble:hover { transform: scale(1.2); }
+.tip-marker__icon { font-size: 20px; line-height: 1; }
+
+.tip-marker__pulse {
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--cat-color, #0A84FF);
+  opacity: 0;
+  animation: tip-pulse 2.5s ease-out infinite;
+}
+
+@keyframes tip-float {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+
+@keyframes tip-pulse {
+  0%   { transform: scale(1); opacity: .5; }
+  100% { transform: scale(2); opacity: 0; }
+}
+
+/* Tip popup */
+.tip-popup .leaflet-popup-content-wrapper {
+  border-radius: 14px !important;
+  box-shadow: 0 12px 32px rgba(0,0,0,.18) !important;
+  padding: 0 !important;
+}
+.tip-popup .leaflet-popup-content { margin: 0 !important; }
+
+.tip-popup-content { font-family: system-ui, sans-serif; overflow: hidden; border-radius: 14px; }
+
+.tip-popup__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 10px;
+  border-bottom: 2px solid var(--cat-color, #0A84FF);
+}
+
+.tip-popup__icon { font-size: 2rem; }
+
+.tip-popup__name { margin: 0; font-size: .95rem; font-weight: 800; color: #1D1D1F; }
+.tip-popup__name-jp { margin: 0; font-size: .75rem; color: #6E6E73; }
+
+.tip-popup__rating { padding: 6px 14px 0; font-size: .8rem; color: #FF9500; }
+
+.tip-popup__meta {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px 8px;
+  padding: 6px 14px;
+  font-size: .75rem;
+  color: #6E6E73;
+}
+
+.tip-popup__desc {
+  padding: 0 14px;
+  font-size: .8rem;
+  color: #1D1D1F;
+  line-height: 1.4;
+  margin: 0 0 8px;
+}
+
+.tip-popup__tip {
+  margin: 0 14px 10px;
+  padding: 8px 10px;
+  background: rgba(255,149,0,.1);
+  border-left: 3px solid #FF9500;
+  font-size: .75rem;
+  color: #1D1D1F;
+  border-radius: 0 8px 8px 0;
+  line-height: 1.4;
+}
+
+.tip-popup__actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 14px 14px;
+}
+
+.tip-popup__btn {
+  flex: 1;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 10px;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  display: inline-block;
+  transition: filter .15s, transform .15s;
+}
+
+.tip-popup__btn--primary { background: var(--cat-color, #0A84FF); color: white; }
+.tip-popup__btn--primary:hover { filter: brightness(1.1); transform: scale(1.02); }
+.tip-popup__btn--secondary { background: #F2F2F7; color: #1D1D1F; }
+.tip-popup__btn--secondary:hover { background: #E5E5EA; }
+
+/* Member markery (live + lastknown) – sdílené s wishlist mapou */
+.member-marker { background: transparent !important; border: none !important; }
+
+.member-marker__bubble {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  border-radius: 14px;
+  padding: 4px 9px 4px 5px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-size: .75rem;
+  font-weight: 700;
+  color: #1D1D1F;
+  box-shadow: 0 3px 10px rgba(0,0,0,.18);
+}
+
+.member-marker--live .member-marker__bubble {
+  border: 2px solid #34C759;
+  box-shadow: 0 3px 10px rgba(52,199,89,.3);
+}
+
+.member-marker--lastknown .member-marker__bubble {
+  border: 2px solid #8E8E93;
+  opacity: .85;
+}
+
+.member-marker__bubble::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-bottom: none;
+}
+.member-marker--live .member-marker__bubble::after     { border-top-color: #34C759; }
+.member-marker--lastknown .member-marker__bubble::after { border-top-color: #8E8E93; }
+
+.member-marker__avatar { font-size: 1rem; }
+.member-marker__name   { max-width: 80px; overflow: hidden; text-overflow: ellipsis; }
+
+.member-marker__pin {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 16px;
+  height: 16px;
+}
+
+.member-marker__pulse {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgba(52,199,89,.4);
+  animation: member-pulse 2s ease-out infinite;
+}
+
+@keyframes member-pulse {
+  0%   { transform: scale(1); opacity: .6; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+.member-marker__dot {
+  position: absolute;
+  inset: 2px;
+  border: 2px solid white;
+  border-radius: 50%;
+  z-index: 2;
+}
+.member-marker--live .member-marker__dot     { background: #34C759; box-shadow: 0 2px 6px rgba(52,199,89,.5); }
+.member-marker--lastknown .member-marker__dot { background: #8E8E93; }
+
+/* Wishlist marker */
+.wishlist-marker { background: transparent !important; border: none !important; }
+
+.wishlist-marker__pin {
+  width: 32px;
+  height: 32px;
+  background: var(--color-indigo, #4F46E5);
+  border: 2.5px solid white;
+  border-radius: 50% 50% 50% 4px;
+  transform: rotate(-45deg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 8px rgba(0,0,0,.25);
+}
+
+.wishlist-marker__pin > span { transform: rotate(45deg); font-size: 14px; }
+
+@media (max-width: 640px) {
+  .map-page { height: calc(100dvh - var(--header-height, 60px) - 80px); }
+  .tip-marker__icon { font-size: 16px; }
+}

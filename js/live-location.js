@@ -82,8 +82,21 @@ export async function stopLiveLocation() {
     _watchId = null;
   }
 
-  if (state.user?.uid) {
-    deleteDoc(doc(db, 'liveLocations', state.user.uid)).catch(() => {});
+  // Uložit jako last-known (enabled: false) místo mazání — 7 dní TTL
+  if (state.user?.uid && _lastPosition) {
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    setDoc(doc(db, 'liveLocations', state.user.uid), {
+      userId:      state.user.uid,
+      displayName: state.profile?.nickname || state.user.displayName || state.user.email?.split('@')[0] || 'Někdo',
+      avatar:      state.profile?.avatar  || '👤',
+      lat:         _lastPosition.coords.latitude,
+      lng:         _lastPosition.coords.longitude,
+      accuracy:    _lastPosition.coords.accuracy,
+      enabled:     false,
+      lastUpdate:  serverTimestamp(),
+      stoppedAt:   serverTimestamp(),
+      expiresAt:   Timestamp.fromDate(expiresAt),
+    }).catch(err => console.warn('[live] save last-known error:', err));
   }
 
   if (_liveListenerUnsub) { _liveListenerUnsub(); _liveListenerUnsub = null; }
@@ -96,7 +109,7 @@ export async function stopLiveLocation() {
   _hideBanner();
   _setHeaderDot(false);
 
-  showToast('⚫ Sdílení polohy vypnuto.', 'info');
+  showToast('⚫ Sdílení vypnuto. Tvá poslední poloha zůstane viditelná.', 'info');
 }
 
 export async function toggleLiveLocation(map) {
@@ -346,4 +359,41 @@ function _esc(str) {
   const d = document.createElement('div');
   d.textContent = String(str);
   return d.innerHTML;
+}
+
+/* ── Export pro Map page ─────────────────────────────────────── */
+
+/**
+ * Poslouchá na všechny live + last-known polohy ostatních.
+ * Volej z map-page.js. Vrátí unsubscribe funkci.
+ */
+export function listenToAllLocations(onUpdate) {
+  const q = query(collection(db, 'liveLocations'));
+
+  return onSnapshot(q, snap => {
+    const now       = Date.now();
+    const live      = [];
+    const lastKnown = [];
+
+    snap.docs.forEach(d => {
+      const data = { id: d.id, ...d.data() };
+      if (data.userId === state.user?.uid) return; // přeskoč sebe
+
+      // Přeskoč expirované
+      const expMs = data.expiresAt?.toMillis ? data.expiresAt.toMillis()
+                  : data.expiresAt ? new Date(data.expiresAt).getTime() : 0;
+      if (expMs && expMs < now) {
+        deleteDoc(doc(db, 'liveLocations', data.userId)).catch(() => {});
+        return;
+      }
+
+      if (data.enabled) {
+        live.push(data);
+      } else {
+        lastKnown.push(data);
+      }
+    });
+
+    onUpdate({ live, lastKnown });
+  }, err => console.error('[live] listenToAllLocations error:', err));
 }

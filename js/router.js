@@ -8,6 +8,7 @@
 
 const ROUTE_LABELS = {
   'dashboard':   'Dashboard',
+  'map':         'Mapa',
   'wishlist':    'Wishlist',
   'itinerary':   'Itinerář',
   'todos':       'Úkoly',
