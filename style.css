@@ -2939,6 +2939,106 @@ a {
   box-shadow: var(--shadow-md) !important;
 }
 
+/* Leaflet bar – Apple style */
+.leaflet-bar {
+  border: none !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a,
+.leaflet-control-zoom a {
+  background: white !important;
+  color: #1D1D1F !important;
+  border-color: rgba(0, 0, 0, 0.06) !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  text-align: center !important;
+  font-size: 18px !important;
+  transition: background 200ms ease;
+}
+
+.leaflet-bar a:hover,
+.leaflet-control-zoom a:hover {
+  background: #F5F5F7 !important;
+}
+
+/* Locate control */
+.locate-control {
+  margin-top: 10px !important;
+}
+
+.locate-btn {
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  width: 30px !important;
+  height: 30px !important;
+  font-size: 16px !important;
+  text-decoration: none !important;
+  cursor: pointer;
+  transition: all 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.locate-btn:hover {
+  background: #F5F5F7 !important;
+  transform: scale(1.05);
+}
+
+.locate-btn:active {
+  transform: scale(0.95);
+}
+
+/* User location pin – pulzující modrá tečka */
+.user-location-pin {
+  background: transparent !important;
+  border: none !important;
+  position: relative;
+}
+
+.user-location-pin__pulse {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  width: 40px;
+  height: 40px;
+  background: rgba(10, 132, 255, 0.3);
+  border-radius: 50%;
+  animation: locate-pulse 2s ease-out infinite;
+}
+
+.user-location-pin__dot {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 24px;
+  height: 24px;
+  background: #0A84FF;
+  border: 3px solid white;
+  border-radius: 50%;
+  box-shadow: 0 2px 8px rgba(10, 132, 255, 0.5);
+}
+
+@keyframes locate-pulse {
+  0%   { transform: scale(0.5); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+/* Map load error overlay */
+.map-load-error {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  color: #6B7280;
+  font-size: 14px;
+  padding: 20px;
+  z-index: 999;
+}
+
 .map-popup__title {
   font-weight: 700;
   font-size: 1rem;

@@ -906,26 +906,134 @@ async function confirmDelete(ideaId) {
 
 const _getMapTileUrl = () => 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
-function initMap() {
-  if (!window.L) {
-    console.warn('[wishlist] Leaflet není načten');
-    return;
+const _TILE_PROVIDERS = [
+  {
+    name: 'CARTO Voyager',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+    options: { attribution: '&copy; OSM &copy; CARTO', subdomains: 'abcd', maxZoom: 20, crossOrigin: true },
+  },
+  {
+    name: 'OpenStreetMap',
+    url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+    options: { attribution: '&copy; OpenStreetMap', maxZoom: 19, crossOrigin: true },
+  },
+  {
+    name: 'Stadia Light',
+    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png',
+    options: { attribution: '&copy; Stadia Maps &copy; OSM', maxZoom: 20, crossOrigin: true },
+  },
+  {
+    name: 'Wikimedia',
+    url: 'https://maps.wikimedia.org/osm-intl/{z}/{x}/{y}.png',
+    options: { attribution: '&copy; Wikimedia &copy; OSM', maxZoom: 18, crossOrigin: true },
+  },
+];
+
+function _tryTileProvider(map, startIndex = 0) {
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  let idx = isIOS ? Math.max(startIndex, 1) : startIndex;
+  let tileErrorCount = 0;
+
+  if (isIOS && startIndex === 0) console.log('[map] iOS detected, starting with OSM');
+
+  function tryIdx() {
+    if (_mapTileLayer) { map.removeLayer(_mapTileLayer); _mapTileLayer = null; }
+    if (idx >= _TILE_PROVIDERS.length) {
+      console.error('[map] All tile providers failed');
+      const el = map.getContainer();
+      if (el) {
+        el.style.background = '#E5E7EB';
+        const err = document.createElement('div');
+        err.className = 'map-load-error';
+        err.innerHTML = '🗺️ Mapa se nepodařilo načíst<br><small>Zkontroluj připojení k internetu</small>';
+        el.appendChild(err);
+      }
+      return;
+    }
+    const p = _TILE_PROVIDERS[idx];
+    console.log(`[map] Trying provider: ${p.name}`);
+    tileErrorCount = 0;
+    _mapTileLayer = L.tileLayer(p.url, p.options);
+    _mapTileLayer.on('tileerror', () => {
+      tileErrorCount++;
+      if (tileErrorCount >= 5) {
+        console.warn(`[map] ${p.name} failed, trying next`);
+        idx++;
+        tryIdx();
+      }
+    });
+    _mapTileLayer.on('tileload', () => { if (tileErrorCount > 0) tileErrorCount = 0; });
+    _mapTileLayer.addTo(map);
   }
+  tryIdx();
+}
+
+function initMap() {
+  if (!window.L) { console.warn('[wishlist] Leaflet není načten'); return; }
   const mapEl = _container?.querySelector('#wl-map');
   if (!mapEl || _map) return;
 
   _map = L.map(mapEl, {
     center: [35.6762, 139.6503],
     zoom: 11,
-    zoomControl: true,
+    zoomControl: false,
   });
 
-  _mapTileLayer = L.tileLayer(_getMapTileUrl(), {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
-    subdomains: 'abcd',
-    maxZoom: 19,
-    minZoom: 4,
-  }).addTo(_map);
+  L.control.zoom({ position: 'topright' }).addTo(_map);
+  _tryTileProvider(_map, 0);
+  _addLocateControl(_map);
+}
+
+function _addLocateControl(map) {
+  const LocateControl = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const wrap = L.DomUtil.create('div', 'leaflet-bar leaflet-control locate-control');
+      const btn  = L.DomUtil.create('a', 'locate-btn', wrap);
+      btn.href = '#';
+      btn.title = 'Moje poloha';
+      btn.setAttribute('aria-label', 'Moje poloha');
+      btn.innerHTML = '📍';
+
+      L.DomEvent.on(btn, 'click', (e) => {
+        L.DomEvent.preventDefault(e);
+        L.DomEvent.stopPropagation(e);
+        if (!navigator.geolocation) { alert('Geolocation není podporováno'); return; }
+
+        btn.innerHTML = '⏳';
+        btn.style.pointerEvents = 'none';
+
+        navigator.geolocation.getCurrentPosition(
+          ({ coords: { latitude: lat, longitude: lng } }) => {
+            map.setView([lat, lng], 15, { animate: true });
+
+            const pin = L.marker([lat, lng], {
+              icon: L.divIcon({
+                className: 'user-location-pin',
+                html: '<div class="user-location-pin__pulse"></div><div class="user-location-pin__dot"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12],
+              }),
+            }).addTo(map).bindPopup('📍 Tady jsi!').openPopup();
+
+            setTimeout(() => { if (map.hasLayer(pin)) map.removeLayer(pin); }, 30000);
+            btn.innerHTML = '📍';
+            btn.style.pointerEvents = '';
+          },
+          (err) => {
+            const msgs = { 1: 'Povol přístup k poloze v nastavení', 2: 'Poloha není dostupná', 3: 'Časový limit vypršel' };
+            alert(msgs[err.code] ?? 'Nepodařilo se najít polohu');
+            btn.innerHTML = '📍';
+            btn.style.pointerEvents = '';
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+        );
+      });
+      return wrap;
+    },
+  });
+  map.addControl(new LocateControl());
 }
 
 function createMarkerIcon(priority, number = null) {
