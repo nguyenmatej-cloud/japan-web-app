@@ -469,8 +469,8 @@ function openInlineForm(idea = null) {
   requestAnimationFrame(() => {
     form.classList.add('inline-form--open');
     setTimeout(() => {
-      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      _container.querySelector('#wl-title')?.focus();
+      const rect = form.getBoundingClientRect();
+      window.scrollTo({ top: rect.top + window.pageYOffset - 80, behavior: 'smooth' });
     }, 80);
     // Init picker map after element is laid out
     requestAnimationFrame(() => {
@@ -905,9 +905,7 @@ async function confirmDelete(ideaId) {
    ════════════════════════════════════════════════════════════ */
 
 const _isDarkTheme  = () => document.documentElement.getAttribute('data-theme') === 'dark';
-const _getMapTileUrl = () => _isDarkTheme()
-  ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-  : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+const _getMapTileUrl = () => 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
 function initMap() {
   if (!window.L) {
@@ -1681,12 +1679,3 @@ function fmtTime(date) {
   return date.toLocaleDateString('cs-CZ', { day: 'numeric', month: 'short' });
 }
 
-/* ── Theme change listener ───────────────────────────────────── */
-window.addEventListener('themechange', () => {
-  if (_mapTileLayer && _map) {
-    _mapTileLayer.setUrl(_getMapTileUrl());
-  }
-  if (_pickerTileLayer && _pickerMap) {
-    _pickerTileLayer.setUrl(_getMapTileUrl());
-  }
-});

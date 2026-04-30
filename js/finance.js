@@ -460,8 +460,8 @@ function openInlineForm() {
   requestAnimationFrame(() => {
     form.classList.add('inline-form--open');
     setTimeout(() => {
-      form.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      _container?.querySelector('#fin-desc')?.focus();
+      const rect = form.getBoundingClientRect();
+      window.scrollTo({ top: rect.top + window.pageYOffset - 80, behavior: 'smooth' });
     }, 50);
   });
   _container?.querySelector('#fin-btn-add')?.classList.add('hidden');

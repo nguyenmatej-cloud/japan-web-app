@@ -77,7 +77,6 @@ let _confirmResolve = null;
 async function init() {
   initTheme();
   setupGlobalEventListeners();
-  setupPullToRefresh();
 
   // Redirect result (iOS Google Sign-In po přesměrování)
   await checkRedirectResult().catch(() => null);
@@ -669,50 +668,6 @@ function setupSheetSwipe(sheet) {
   handle?.addEventListener('touchend',   onEnd);
 }
 
-/* ════════════════════════════════════════════════════════════
-   PULL-TO-REFRESH
-   ════════════════════════════════════════════════════════════ */
-
-function setupPullToRefresh() {
-  let startY = 0, currentY = 0, isPulling = false;
-  const indicator = document.getElementById('ptr-indicator');
-  const main      = document.getElementById('main-content');
-  if (!indicator || !main) return;
-
-  document.addEventListener('touchstart', (e) => {
-    if (window.scrollY === 0 && main.scrollTop === 0) {
-      startY    = e.touches[0].clientY;
-      isPulling = true;
-    }
-  }, { passive: true });
-
-  document.addEventListener('touchmove', (e) => {
-    if (!isPulling) return;
-    currentY    = e.touches[0].clientY;
-    const diff  = currentY - startY;
-    if (diff > 0 && diff < 150) {
-      indicator.style.transform = `translateX(-50%) translateY(${diff + 60}px)`;
-      indicator.style.opacity   = String(Math.min(diff / 80, 1));
-      indicator.querySelector('.ptr-spinner').style.transform = `rotate(${(diff / 80) * 360}deg)`;
-    }
-  }, { passive: true });
-
-  document.addEventListener('touchend', () => {
-    if (!isPulling) return;
-    isPulling = false;
-    const diff = currentY - startY;
-
-    if (diff > 80) {
-      indicator.classList.add('ptr-refreshing');
-      setTimeout(() => location.reload(), 600);
-    } else {
-      indicator.style.transition = 'transform 300ms ease, opacity 300ms ease';
-      indicator.style.transform  = 'translateX(-50%) translateY(0)';
-      indicator.style.opacity    = '0';
-      setTimeout(() => { indicator.style.transition = ''; }, 300);
-    }
-  });
-}
 
 async function handleLogout() {
   const confirmed = await showConfirm('Odhlásit se?', 'Chceš se opravdu odhlásit?');
