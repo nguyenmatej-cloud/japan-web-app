@@ -2884,37 +2884,65 @@ a {
   100% { transform: rotate(-40deg) scale(1.12); }
 }
 
-/* Leaflet popup */
-.leaflet-popup-content-wrapper {
+/* Leaflet – mapa vždy světlá, bez filtrů */
+.leaflet-container {
+  z-index: 1;
+  background: #FAFAF9;
+}
+
+.leaflet-tile-pane,
+.leaflet-tile,
+[data-theme="dark"] .leaflet-tile-pane,
+[data-theme="dark"] .leaflet-tile {
+  filter: none !important;
+}
+
+[data-theme="dark"] .leaflet-container {
+  filter: none !important;
+  background: #FAFAF9 !important;
+}
+
+/* Map controls – vždy bílé */
+.leaflet-control-zoom a,
+.leaflet-bar a {
+  background: white !important;
+  color: #1D1D1F !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+.leaflet-control-zoom a:hover,
+.leaflet-bar a:hover {
+  background: #F5F5F7 !important;
+}
+
+/* Leaflet popup – vždy bílý */
+.leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-content-wrapper {
+  background: white !important;
+  color: #1D1D1F !important;
   border-radius: var(--radius-lg) !important;
-  box-shadow: var(--shadow-xl) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15) !important;
   padding: 0 !important;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 .leaflet-popup-content {
   margin: var(--space-4) !important;
   font-family: var(--font-body) !important;
+  color: #1D1D1F !important;
 }
 
-.leaflet-popup-tip {
-  box-shadow: var(--shadow-md) !important;
-}
-
-[data-theme="dark"] .leaflet-popup-content-wrapper {
-  background: var(--bg-surface) !important;
-  color: var(--text) !important;
-}
-
+.leaflet-popup-tip,
 [data-theme="dark"] .leaflet-popup-tip {
-  background: var(--bg-surface) !important;
+  background: white !important;
+  box-shadow: var(--shadow-md) !important;
 }
 
 .map-popup__title {
   font-weight: 700;
   font-size: 1rem;
-  color: var(--text);
+  color: #1D1D1F;
   margin-bottom: var(--space-2);
   font-family: var(--font-heading);
 }
@@ -2925,7 +2953,7 @@ a {
   gap: var(--space-2);
   margin-bottom: var(--space-3);
   font-size: .8rem;
-  color: var(--text-secondary);
+  color: #6E6E73;
 }
 
 .map-popup__btn {

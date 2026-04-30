@@ -904,7 +904,6 @@ async function confirmDelete(ideaId) {
    MAPA
    ════════════════════════════════════════════════════════════ */
 
-const _isDarkTheme  = () => document.documentElement.getAttribute('data-theme') === 'dark';
 const _getMapTileUrl = () => 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
 
 function initMap() {
