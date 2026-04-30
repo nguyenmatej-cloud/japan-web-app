@@ -4648,19 +4648,11 @@ button, .btn, [role="button"] {
 }
 
 /* ════════════════════════════════════════════════════════════
-   53. Dark mode – dropdown arrow fix
+   53. Dark mode – dropdown arrow fix (minimální)
    ════════════════════════════════════════════════════════════ */
 
-/* Šipka .form-select je SVG s šedou barvou (#71717A) – v dark mode neviditelná.
-   Override na bílou. */
-[data-theme="dark"] .form-select,
-[data-theme="dark"] .wishlist-filter-select,
-[data-theme="dark"] .wishlist-sort-select,
-[data-theme="dark"] .filter-select {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23FFFFFF' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") !important;
-}
-
-[data-theme="dark"] select option {
-  background-color: var(--bg-surface);
-  color: var(--text);
+/* Native select arrow – jen přebarvit na bílou, nic jiného */
+[data-theme="dark"] .form-select {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23FFFFFF' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'/%3e%3c/svg%3e") !important;
+  color-scheme: dark;
 }
