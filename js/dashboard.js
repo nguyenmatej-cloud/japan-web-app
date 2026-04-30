@@ -115,11 +115,11 @@ export function render(container) {
   loadDashboardStats().catch(err => console.error('[dashboard] loadStats:', err));
 
   // Real-time activity feed + stats
-  const unsubFns = setupActivityFeed();
+  setupActivityFeed();
 
   return () => {
     clearInterval(intervalId);
-    unsubFns.forEach(fn => fn?.());  // unsubscribe všechny listenery
+    cleanupActivityListeners();
     _container = null;
   };
 }
@@ -158,54 +158,45 @@ async function loadDashboardStats() {
    ACTIVITY FEED + REAL-TIME STATS
    ════════════════════════════════════════════════════════════ */
 
-let _activityCache = {
-  ideas:    [],
-  expenses: [],
-  todos:    [],
-};
-let _usersMap = {}; // uid → user data (pro avatary, nicknames)
+let _activityListeners = [];
+let _activityCache = { ideas: [], expenses: [], todos: [] };
+let _usersMap = {};
 
-function setupActivityFeed() {
-  const unsubFns = [];
-
-  // Načti users mapu (pro avatary v activity feedu)
-  getDocs(collection(db, 'users')).then(snap => {
-    snap.docs.forEach(d => { _usersMap[d.id] = d.data(); });
-    renderActivityFeed();
-  }).catch(err => console.error('[dashboard] users load:', err));
-
-  // Real-time listeners pro 3 kolekce
-  unsubFns.push(listenToCollection('ideas',    10));
-  unsubFns.push(listenToCollection('expenses', 10));
-  unsubFns.push(listenToCollection('todos',    10));
-
-  return unsubFns;
+function cleanupActivityListeners() {
+  _activityListeners.forEach(unsub => { try { unsub(); } catch (_) {} });
+  _activityListeners = [];
 }
 
-function listenToCollection(collName, maxItems) {
-  try {
-    const q = query(
-      collection(db, collName),
-      orderBy('createdAt', 'desc'),
-      limit(maxItems)
-    );
+function setupActivityFeed() {
+  // Cleanup předchozích listenerů + reset cache při každém vstupu na Dashboard
+  cleanupActivityListeners();
+  _activityCache = { ideas: [], expenses: [], todos: [] };
+  _usersMap = {};
 
-    return onSnapshot(q, snap => {
-      _activityCache[collName] = snap.docs.map(d => ({
-        id:   d.id,
-        type: collName,
-        ...d.data(),
-      }));
-
+  getDocs(collection(db, 'users'))
+    .then(snap => {
+      snap.docs.forEach(d => { _usersMap[d.id] = d.data(); });
       renderActivityFeed();
-      updateQuickStats();
-    }, err => {
-      console.error(`[dashboard] ${collName} listener error:`, err);
-    });
-  } catch (err) {
-    console.error(`[dashboard] Failed to setup ${collName} listener:`, err);
-    return null;
-  }
+    })
+    .catch(err => console.error('[dashboard] users load:', err));
+
+  ['ideas', 'expenses', 'todos'].forEach(col => {
+    try {
+      const q = query(collection(db, col), orderBy('createdAt', 'desc'), limit(10));
+      const unsub = onSnapshot(q,
+        snap => {
+          if (!_container) return;
+          _activityCache[col] = snap.docs.map(d => ({ id: d.id, type: col, ...d.data() }));
+          renderActivityFeed();
+          updateQuickStats();
+        },
+        err => console.error(`[dashboard] ${col} listener:`, err),
+      );
+      _activityListeners.push(unsub);
+    } catch (err) {
+      console.error(`[dashboard] Failed to setup ${col} listener:`, err);
+    }
+  });
 }
 
 function renderActivityFeed() {

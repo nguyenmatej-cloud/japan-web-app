@@ -670,27 +670,49 @@ function renderGrid() {
 
 function setupSwipeGestures(ideas) {
   if (!_container) return;
+
+  // Swipe pouze na touch zařízeních (mobil/tablet) — ne na PC s myší
+  const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (!isTouchDevice) return;
+
   const cards = _container.querySelectorAll('.idea-card[data-id]');
 
   cards.forEach(card => {
-    let startX = 0, currentX = 0, isDragging = false;
+    let startX = 0, startY = 0, currentX = 0, isDragging = false;
+    let touchStartTime = 0;
 
     card.addEventListener('touchstart', (e) => {
-      startX     = e.touches[0].clientX;
+      if (e.touches.length !== 1) return;
+      // Ignoruj tappy na tlačítka/linky
+      if (e.target.closest('button, a, [role="button"], input')) return;
+
+      startX = currentX = e.touches[0].clientX; // KEY: currentX = startX, ne 0
+      startY = e.touches[0].clientY;
       isDragging = true;
+      touchStartTime = Date.now();
       card.style.transition = 'none';
     }, { passive: true });
 
     card.addEventListener('touchmove', (e) => {
-      if (!isDragging) return;
-      currentX    = e.touches[0].clientX;
-      const diff  = currentX - startX;
-      if (Math.abs(diff) > 10) {
-        card.style.transform = `translateX(${diff}px)`;
-        if (diff > 0) {
-          card.style.background = `linear-gradient(90deg, rgba(34,197,94,${Math.min(diff/200, 0.25)}) 0%, transparent 100%)`;
+      if (!isDragging || e.touches.length !== 1) return;
+      currentX = e.touches[0].clientX;
+      const diffX = currentX - startX;
+      const diffY = e.touches[0].clientY - startY;
+
+      // Vertikální scroll → zruš swipe
+      if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > 8) {
+        isDragging = false;
+        card.style.transform = '';
+        card.style.background = '';
+        return;
+      }
+
+      if (Math.abs(diffX) > 8) {
+        card.style.transform = `translateX(${diffX}px)`;
+        if (diffX > 0) {
+          card.style.background = `linear-gradient(90deg, rgba(34,197,94,${Math.min(diffX/200, 0.25)}) 0%, transparent 100%)`;
         } else {
-          card.style.background = `linear-gradient(270deg, rgba(239,68,68,${Math.min(-diff/200, 0.25)}) 0%, transparent 100%)`;
+          card.style.background = `linear-gradient(270deg, rgba(239,68,68,${Math.min(-diffX/200, 0.25)}) 0%, transparent 100%)`;
         }
       }
     }, { passive: true });
@@ -698,11 +720,15 @@ function setupSwipeGestures(ideas) {
     card.addEventListener('touchend', () => {
       if (!isDragging) return;
       isDragging = false;
-      const diff  = currentX - startX;
+      const diff = currentX - startX;
+      const duration = Date.now() - touchStartTime;
 
       card.style.transition = 'transform 300ms cubic-bezier(0.34, 1.56, 0.64, 1), background 300ms ease';
       card.style.transform  = '';
       card.style.background = '';
+
+      // Quick tap (< 200ms a < 8px) → nechej click handler
+      if (duration < 200 && Math.abs(diff) < 8) return;
 
       const ideaId = card.dataset.id;
       if (!ideaId) return;
@@ -715,6 +741,14 @@ function setupSwipeGestures(ideas) {
           confirmDelete(ideaId);
         }
       }
+    });
+
+    card.addEventListener('touchcancel', () => {
+      if (!isDragging) return;
+      isDragging = false;
+      card.style.transition = 'transform 300ms ease, background 300ms';
+      card.style.transform  = '';
+      card.style.background = '';
     });
   });
 }
