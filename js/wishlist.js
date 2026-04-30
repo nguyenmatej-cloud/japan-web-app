@@ -996,6 +996,17 @@ function estimateTransitTime(distM) {
   return (distM / WALK_MPS) + TRANSIT_PENALTY;
 }
 
+function getIdeaCoords(idea) {
+  if (idea.pinLat != null && idea.pinLng != null)             return { lat: idea.pinLat,            lng: idea.pinLng };
+  if (idea.lat    != null && idea.lng    != null)             return { lat: idea.lat,                lng: idea.lng };
+  if (idea.location?.lat != null)                            return { lat: idea.location.lat,       lng: idea.location.lng };
+  if (idea.location?.latitude != null)                       return { lat: idea.location.latitude,  lng: idea.location.longitude };
+  if (idea.coords?.lat != null)                              return { lat: idea.coords.lat,         lng: idea.coords.lng };
+  if (idea.position?.lat != null)                            return { lat: idea.position.lat,       lng: idea.position.lng };
+  if (idea.geo?.lat != null)                                 return { lat: idea.geo.lat,            lng: idea.geo.lng };
+  return null;
+}
+
 async function calculateAllDistances() {
   if (_isCalculatingDistances) return;
 
@@ -1013,8 +1024,11 @@ async function calculateAllDistances() {
     async (pos) => {
       _userCurrentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
 
-      const ideasWithLocation = _ideasCache.filter(i => i.lat != null && i.lng != null);
+      const ideasWithLocation = _ideasCache.filter(i => getIdeaCoords(i) !== null);
       const total = ideasWithLocation.length;
+
+      console.log(`[distance] ${total}/${_ideasCache.length} nápadů má souřadnice`);
+      if (_ideasCache.length > 0) console.log('[distance] first idea keys:', Object.keys(_ideasCache[0]));
 
       if (total === 0) {
         showToast('Žádný nápad nemá GPS souřadnice. Přidej lokace na mapě.', 'info');
@@ -1027,17 +1041,20 @@ async function calculateAllDistances() {
 
       let done = 0;
       for (const idea of ideasWithLocation) {
+        const coords = getIdeaCoords(idea);
+        if (!coords) continue;
+
         const straight = calculateHaversineDistance(
           _userCurrentLocation.lat, _userCurrentLocation.lng,
-          idea.lat, idea.lng
+          coords.lat, coords.lng
         );
 
         let walk = null, walkMin = null, drive = null, driveMin = null;
 
         const [walkRoute, driveRoute] = await Promise.all([
-          fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, idea.lat, idea.lng, 'foot'),
+          fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, coords.lat, coords.lng, 'foot'),
           straight > 2000
-            ? fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, idea.lat, idea.lng, 'driving')
+            ? fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, coords.lat, coords.lng, 'driving')
             : Promise.resolve(null),
         ]);
 
