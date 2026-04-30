@@ -81,6 +81,11 @@ let _pickerTileLayer = null;
 let _userLocationMarker = null;
 let _userLocationCircle = null;
 
+// Vzdálenosti
+let _userCurrentLocation    = null;   // { lat, lng }
+let _distanceData           = new Map(); // ideaId → { straight, walk, walkMin, drive, driveMin }
+let _isCalculatingDistances = false;
+
 /* ════════════════════════════════════════════════════════════
    RENDER (entry point)
    ════════════════════════════════════════════════════════════ */
@@ -171,6 +176,10 @@ export function render(container) {
     _map?.closePopup();
     startLocationEdit(btn.dataset.editLocation);
   });
+
+  /* Vzdálenosti */
+  container.querySelector('#btn-toggle-distance')
+    ?.addEventListener('click', () => calculateAllDistances());
 
   /* Bannery pro edit lokace */
   container.querySelector('#wl-edit-confirm')?.addEventListener('click', confirmLocationEdit);
@@ -349,6 +358,10 @@ function buildShell() {
       </div>
 
       <div class="wishlist-toolbar" role="search" aria-label="Filtry a řazení">
+        <button type="button" class="btn btn--ghost btn--sm distance-toggle-btn" id="btn-toggle-distance"
+          aria-pressed="false" title="Spočítat vzdálenosti od tvé aktuální polohy">
+          📏 Vzdálenosti
+        </button>
         <div class="wishlist-filters">
           <select class="form-select wishlist-filter-select" id="wl-filter-category" aria-label="Filtr kategorie">
             <option value="">Všechny kategorie</option>
@@ -370,6 +383,7 @@ function buildShell() {
           <option value="likes">👍 Nejvíc lajků</option>
           <option value="cosigns">✋ Nejvíc co-signů</option>
           <option value="alpha">🔤 Abecedně</option>
+          <option value="distance">📏 Nejbližší ode mě</option>
         </select>
       </div>
 
@@ -649,6 +663,11 @@ function renderGrid() {
     case 'likes':   ideas.sort((a, b) => (b.likes?.length ?? 0)   - (a.likes?.length ?? 0));   break;
     case 'cosigns': ideas.sort((a, b) => (b.cosigns?.length ?? 0) - (a.cosigns?.length ?? 0)); break;
     case 'alpha':   ideas.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? '', 'cs'));   break;
+    case 'distance': ideas.sort((a, b) => {
+      const da = _distanceData.get(a.id)?.straight ?? Infinity;
+      const db2 = _distanceData.get(b.id)?.straight ?? Infinity;
+      return da - db2;
+    }); break;
     default: break;
   }
 
@@ -802,6 +821,7 @@ function buildIdeaCard(idea, number = null) {
           <span>📍 Bez lokace</span>
           ${canAddLocation ? `<button class="btn btn--xs btn--ghost" data-action="add-location" data-id="${idea.id}">Přidat na mapě</button>` : ''}
         </div>` : ''}
+      ${renderDistanceInfo(idea.id)}
       <div class="idea-card__author">
         <span class="idea-card__avatar" aria-hidden="true">${esc(idea.authorAvatar ?? '😊')}</span>
         <span class="idea-card__author-name">${esc(idea.authorNickname ?? '—')}</span>
@@ -943,6 +963,153 @@ async function confirmDelete(ideaId) {
    ════════════════════════════════════════════════════════════ */
 
 const _getMapTileUrl = () => 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+
+/* ════════════════════════════════════════════════════════════
+   VZDÁLENOSTI
+   ════════════════════════════════════════════════════════════ */
+
+function calculateHaversineDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+async function fetchOSRMRoute(fromLat, fromLng, toLat, toLng, profile = 'foot') {
+  const url = `https://router.project-osrm.org/route/v1/${profile}/${fromLng},${fromLat};${toLng},${toLat}?overview=false`;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(6000) });
+    if (!r.ok) return null;
+    const data = await r.json();
+    if (data.code !== 'Ok' || !data.routes?.[0]) return null;
+    return { distance: data.routes[0].distance, duration: data.routes[0].duration };
+  } catch {
+    return null;
+  }
+}
+
+function estimateTransitTime(distM) {
+  const WALK_MPS   = 1.2;
+  const TRANSIT_PENALTY = 300;
+  return (distM / WALK_MPS) + TRANSIT_PENALTY;
+}
+
+async function calculateAllDistances() {
+  if (_isCalculatingDistances) return;
+
+  const btn = _container?.querySelector('#btn-toggle-distance');
+
+  if (!navigator.geolocation) {
+    showToast('Geolokace není v tomto prohlížeči dostupná.', 'error');
+    return;
+  }
+
+  _isCalculatingDistances = true;
+  if (btn) { btn.textContent = '⏳ Načítám polohu…'; btn.disabled = true; }
+
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      _userCurrentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+
+      const ideasWithLocation = _ideasCache.filter(i => i.lat != null && i.lng != null);
+      const total = ideasWithLocation.length;
+
+      if (total === 0) {
+        showToast('Žádný nápad nemá GPS souřadnice. Přidej lokace na mapě.', 'info');
+        _isCalculatingDistances = false;
+        if (btn) { btn.textContent = '📏 Vzdálenosti'; btn.disabled = false; }
+        return;
+      }
+
+      if (btn) btn.textContent = `⏳ 0 / ${total}`;
+
+      let done = 0;
+      for (const idea of ideasWithLocation) {
+        const straight = calculateHaversineDistance(
+          _userCurrentLocation.lat, _userCurrentLocation.lng,
+          idea.lat, idea.lng
+        );
+
+        let walk = null, walkMin = null, drive = null, driveMin = null;
+
+        const [walkRoute, driveRoute] = await Promise.all([
+          fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, idea.lat, idea.lng, 'foot'),
+          straight > 2000
+            ? fetchOSRMRoute(_userCurrentLocation.lat, _userCurrentLocation.lng, idea.lat, idea.lng, 'driving')
+            : Promise.resolve(null),
+        ]);
+
+        if (walkRoute) {
+          walk    = walkRoute.distance;
+          walkMin = Math.round(walkRoute.duration / 60);
+        } else {
+          walk    = straight * 1.3;
+          walkMin = Math.round(estimateTransitTime(straight) / 60);
+        }
+
+        if (driveRoute) {
+          drive    = driveRoute.distance;
+          driveMin = Math.round(driveRoute.duration / 60);
+        }
+
+        _distanceData.set(idea.id, { straight, walk, walkMin, drive, driveMin });
+
+        done++;
+        if (btn) btn.textContent = `⏳ ${done} / ${total}`;
+      }
+
+      _isCalculatingDistances = false;
+      if (btn) {
+        btn.textContent = '📏 Vzdálenosti ✓';
+        btn.setAttribute('aria-pressed', 'true');
+        btn.classList.add('distance-toggle-btn--active');
+        btn.disabled = false;
+      }
+
+      renderGrid();
+      showToast(`Vzdálenosti spočítány pro ${done} nápadů.`, 'success');
+    },
+    (err) => {
+      _isCalculatingDistances = false;
+      if (btn) { btn.textContent = '📏 Vzdálenosti'; btn.disabled = false; }
+      const msg = err.code === 1 ? 'Poloha odepřena – povol ji v nastavení prohlížeče.'
+                : err.code === 2 ? 'Polohu nelze zjistit.'
+                : 'Časový limit pro zjištění polohy vypršel.';
+      showToast(msg, 'error');
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
+}
+
+function formatDistance(meters) {
+  if (meters == null) return null;
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
+function formatDuration(minutes) {
+  if (minutes == null) return null;
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
+function renderDistanceInfo(ideaId) {
+  const d = _distanceData.get(ideaId);
+  if (!d) return '';
+
+  const walkStr  = formatDistance(d.walk);
+  const walkTime = formatDuration(d.walkMin);
+  const driveStr  = d.drive != null ? formatDistance(d.drive) : null;
+  const driveTime = d.driveMin != null ? formatDuration(d.driveMin) : null;
+
+  let html = `<div class="distance-info">`;
+  if (walkStr)  html += `<span class="distance-info__item">🚶 ${walkStr}${walkTime ? ` · ${walkTime}` : ''}</span>`;
+  if (driveStr) html += `<span class="distance-info__item">🚗 ${driveStr}${driveTime ? ` · ${driveTime}` : ''}</span>`;
+  html += `</div>`;
+  return html;
+}
 
 function initMap() {
   if (!window.L) { console.warn('[wishlist] Leaflet není načten'); return; }
