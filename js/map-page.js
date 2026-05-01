@@ -15,6 +15,7 @@ let _map                  = null;
 let _liveListenerUnsub    = null;
 let _userLocationMarker   = null;
 let _activeCategory       = 'all';
+let _outsideClickHandler  = null;
 
 const _layers = {
   tips:      { enabled: true,  group: null, markers: [] },
@@ -44,7 +45,7 @@ export function render(container) {
             <button class="map-layer-btn map-layer-btn--active" data-layer="live">
               <span class="map-layer-btn__icon">🟢</span>
               <span class="map-layer-btn__text">Live</span>
-              <span class="map-layer-btn__count" id="live-count"></span>
+              <span class="map-layer-btn__count" id="live-count">(0)</span>
             </button>
             <button class="map-layer-chevron" data-dropdown="live" aria-label="Rozbalit seznam">▼</button>
             <div class="map-layer-dropdown hidden" id="dropdown-live">
@@ -56,10 +57,10 @@ export function render(container) {
             <button class="map-layer-btn map-layer-btn--active" data-layer="lastKnown">
               <span class="map-layer-btn__icon">⚫</span>
               <span class="map-layer-btn__text">Last seen</span>
-              <span class="map-layer-btn__count" id="lastknown-count"></span>
+              <span class="map-layer-btn__count" id="lastknown-count">(0)</span>
             </button>
-            <button class="map-layer-chevron" data-dropdown="lastKnown" aria-label="Rozbalit seznam">▼</button>
-            <div class="map-layer-dropdown hidden" id="dropdown-lastKnown">
+            <button class="map-layer-chevron" data-dropdown="lastknown" aria-label="Rozbalit seznam">▼</button>
+            <div class="map-layer-dropdown hidden" id="dropdown-lastknown">
               <div class="dropdown-empty">Nikdo nemá last seen polohu</div>
             </div>
           </div>
@@ -507,9 +508,14 @@ function _setupEventListeners() {
   document.querySelectorAll('.map-layer-chevron').forEach(chevron => {
     chevron.addEventListener('click', (e) => {
       e.stopPropagation();
-      const dropdownId = `dropdown-${chevron.dataset.dropdown}`;
-      const dropdown   = document.getElementById(dropdownId);
-      if (!dropdown) return;
+      e.preventDefault();
+      const dropdownType = chevron.dataset.dropdown;
+      const dropdownId   = dropdownType === 'live' ? 'dropdown-live' : 'dropdown-lastknown';
+      const dropdown     = document.getElementById(dropdownId);
+      if (!dropdown) {
+        console.warn('[map] Dropdown not found:', dropdownId);
+        return;
+      }
       const isOpen = !dropdown.classList.contains('hidden');
       document.querySelectorAll('.map-layer-dropdown').forEach(d => d.classList.add('hidden'));
       document.querySelectorAll('.map-layer-chevron').forEach(c => c.classList.remove('map-layer-chevron--open'));
@@ -520,25 +526,14 @@ function _setupEventListeners() {
     });
   });
 
-  // Dropdown member click → flyTo
-  document.addEventListener('click', (e) => {
-    const member = e.target.closest('.dropdown-member');
-    if (member) {
-      const lat    = parseFloat(member.dataset.lat);
-      const lng    = parseFloat(member.dataset.lng);
-      const uid    = member.dataset.uid;
-      const isLive = !!member.closest('#dropdown-live');
-      _flyToMember(lat, lng, uid, isLive);
-      document.querySelectorAll('.map-layer-dropdown').forEach(d => d.classList.add('hidden'));
-      document.querySelectorAll('.map-layer-chevron').forEach(c => c.classList.remove('map-layer-chevron--open'));
-      return;
-    }
-    // Click outside → close all
+  // Click outside → close all dropdowns (stored for cleanup)
+  _outsideClickHandler = (e) => {
     if (!e.target.closest('.map-layer-group')) {
       document.querySelectorAll('.map-layer-dropdown').forEach(d => d.classList.add('hidden'));
       document.querySelectorAll('.map-layer-chevron').forEach(c => c.classList.remove('map-layer-chevron--open'));
     }
-  });
+  };
+  document.addEventListener('click', _outsideClickHandler);
 
   // Category chips
   document.getElementById('mp-categories')?.addEventListener('click', e => {
@@ -579,57 +574,84 @@ function _updateLegend() {
 function _updateLayerCounts(live, lastKnown) {
   const liveEl = document.getElementById('live-count');
   const lastEl = document.getElementById('lastknown-count');
-  if (liveEl) liveEl.textContent = live.length > 0 ? `(${live.length})` : '';
-  if (lastEl) lastEl.textContent = lastKnown.length > 0 ? `(${lastKnown.length})` : '';
+  if (liveEl) liveEl.textContent = `(${live.length})`;
+  if (lastEl) lastEl.textContent = `(${lastKnown.length})`;
 }
 
 function _updateDropdowns(live, lastKnown) {
   const liveDropdown = document.getElementById('dropdown-live');
   if (liveDropdown) {
-    liveDropdown.innerHTML = !live.length
-      ? '<div class="dropdown-empty">Nikdo není live</div>'
-      : live.map(m => `
-          <button class="dropdown-member" data-uid="${m.userId}" data-lat="${m.lat}" data-lng="${m.lng}">
-            <span class="dropdown-member__avatar">${m.avatar}</span>
-            <span class="dropdown-member__name">${_esc(m.displayName)}</span>
-            <span class="dropdown-member__status">🟢 live</span>
-          </button>`).join('');
+    if (!live.length) {
+      liveDropdown.innerHTML = '<div class="dropdown-empty">Nikdo není live</div>';
+    } else {
+      liveDropdown.innerHTML = live.map(m => `
+        <button class="dropdown-member" data-uid="${m.userId}" data-type="live">
+          <span class="dropdown-member__avatar">${m.avatar}</span>
+          <div class="dropdown-member__info">
+            <strong class="dropdown-member__name">${_esc(m.displayName)}</strong>
+            <span class="dropdown-member__status">
+              <span class="dropdown-member__pulse"></span>
+              live
+            </span>
+          </div>
+        </button>`).join('');
+    }
   }
 
-  const lastDropdown = document.getElementById('dropdown-lastKnown');
+  const lastDropdown = document.getElementById('dropdown-lastknown');
   if (lastDropdown) {
-    lastDropdown.innerHTML = !lastKnown.length
-      ? '<div class="dropdown-empty">Nikdo nemá last seen polohu</div>'
-      : lastKnown.map(m => {
-          const d       = m.lastUpdate?.toDate ? m.lastUpdate.toDate() : new Date();
-          const mins    = Math.floor((Date.now() - d.getTime()) / 60_000);
-          const timeText = mins < 1    ? 'právě teď'
-                         : mins < 60   ? `před ${mins} min`
-                         : mins < 1440 ? `před ${Math.floor(mins / 60)} h`
-                         :               `před ${Math.floor(mins / 1440)} dny`;
-          return `
-            <button class="dropdown-member" data-uid="${m.userId}" data-lat="${m.lat}" data-lng="${m.lng}">
-              <span class="dropdown-member__avatar">${m.avatar}</span>
-              <span class="dropdown-member__name">${_esc(m.displayName)}</span>
-              <span class="dropdown-member__time">${timeText}</span>
-            </button>`;
-        }).join('');
+    if (!lastKnown.length) {
+      lastDropdown.innerHTML = '<div class="dropdown-empty">Nikdo nemá last seen polohu</div>';
+    } else {
+      lastDropdown.innerHTML = lastKnown.map(m => {
+        const d        = m.lastUpdate?.toDate ? m.lastUpdate.toDate() : new Date();
+        const mins     = Math.floor((Date.now() - d.getTime()) / 60_000);
+        const timeText = mins < 1    ? 'právě teď'
+                       : mins < 60   ? `před ${mins} min`
+                       : mins < 1440 ? `před ${Math.floor(mins / 60)} h`
+                       :               `před ${Math.floor(mins / 1440)} dny`;
+        return `
+          <button class="dropdown-member" data-uid="${m.userId}" data-type="lastknown">
+            <span class="dropdown-member__avatar">${m.avatar}</span>
+            <div class="dropdown-member__info">
+              <strong class="dropdown-member__name">${_esc(m.displayName)}</strong>
+              <span class="dropdown-member__status dropdown-member__status--muted">
+                📍 ${timeText}
+              </span>
+            </div>
+          </button>`;
+      }).join('');
+    }
   }
+
+  // Attach click → flyTo on freshly rendered buttons
+  document.querySelectorAll('.dropdown-member').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const uid  = btn.dataset.uid;
+      const type = btn.dataset.type;
+      _flyToMember(uid, type);
+      document.querySelectorAll('.map-layer-dropdown').forEach(d => d.classList.add('hidden'));
+      document.querySelectorAll('.map-layer-chevron').forEach(c => c.classList.remove('map-layer-chevron--open'));
+    });
+  });
 }
 
-function _flyToMember(lat, lng, uid, isLive) {
+function _flyToMember(userId, type) {
   if (!_map) return;
-  _map.flyTo([lat, lng], 15, { duration: 1.4 });
-  setTimeout(() => {
-    const markers = isLive ? _layers.live.markers : _layers.lastKnown.markers;
-    markers.get(uid)?.openPopup();
-  }, 1600);
+  const marker = type === 'live'
+    ? _layers.live.markers.get(userId)
+    : _layers.lastKnown.markers.get(userId);
+  if (!marker) return;
+  const { lat, lng } = marker.getLatLng();
+  _map.flyTo([lat, lng], 14, { animate: true, duration: 1.5 });
+  setTimeout(() => marker.openPopup(), 1600);
 }
 
 /* ── Cleanup ─────────────────────────────────────────────────── */
 
 function _cleanup() {
   if (_liveListenerUnsub) { _liveListenerUnsub(); _liveListenerUnsub = null; }
+  if (_outsideClickHandler) { document.removeEventListener('click', _outsideClickHandler); _outsideClickHandler = null; }
   if (_map) { _map.remove(); _map = null; }
   delete window._mapPageAddToWishlist;
 
