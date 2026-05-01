@@ -409,7 +409,7 @@ function _addLocateControl(map) {
         try {
           const pos = await new Promise((res, rej) =>
             navigator.geolocation.getCurrentPosition(res, rej, {
-              enableHighAccuracy: true, timeout: 10_000,
+              enableHighAccuracy: true, timeout: 15_000, maximumAge: 0,
             })
           );
 

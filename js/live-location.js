@@ -12,8 +12,9 @@ import {
 
 /* ── Konstanty ───────────────────────────────────────────────── */
 
-const UPDATE_INTERVAL_MS = 30_000; // 30 s
-const MIN_DISTANCE_M     = 50;     // okamžitý update při pohybu
+const UPDATE_INTERVAL_MS = 5_000;          // 5s — max přesnost pro Japonsko
+const MIN_DISTANCE_M     = 10;             // 10m — okamžitý update při pohybu
+const GPS_TIMEOUT_MS     = 15_000;         // 15s timeout pro GPS
 const AUTO_OFF_MS        = 4 * 60 * 60 * 1000; // 4 hodiny
 
 /* ── Stav modulu ─────────────────────────────────────────────── */
@@ -46,9 +47,13 @@ export async function startLiveLocation(map) {
   try {
     const position = await new Promise((resolve, reject) =>
       navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true, timeout: 10_000,
+        enableHighAccuracy: true,
+        timeout:     GPS_TIMEOUT_MS,
+        maximumAge:  0,
       })
     );
+
+    console.log(`[live] GPS přesnost: ±${Math.round(position.coords.accuracy)}m`);
 
     _isLive         = true;
     _lastPosition   = position;
@@ -61,13 +66,15 @@ export async function startLiveLocation(map) {
     _startListening(map);
     _showBanner();
     _setHeaderDot(true);
+    _updateAccuracyDisplay(position.coords.accuracy);
 
-    showToast('🟢 Tvá poloha je teď live.', 'success');
+    showToast('🟢 Tvá poloha je teď live (max přesnost)', 'success');
 
   } catch (err) {
     _isLive = false;
     const msg = err.code === 1 ? 'Povol přístup k poloze v nastavení prohlížeče.'
-              : err.code === 2 ? 'Poloha není dostupná.'
+              : err.code === 2 ? 'Poloha není dostupná - zkontroluj GPS.'
+              : err.code === 3 ? 'Vypršel čas - zkus znovu (potřebuješ otevřené nebe).'
               : 'Nepodařilo se zapnout sdílení polohy.';
     showToast(msg, 'error');
   }
@@ -154,14 +161,19 @@ function _startWatch() {
         : Infinity;
 
       if (timeSince >= UPDATE_INTERVAL_MS || distanceMoved >= MIN_DISTANCE_M) {
+        console.log(`[live] Update GPS: ±${Math.round(pos.coords.accuracy)}m, pohyb ${Math.round(distanceMoved)}m`);
         _lastPosition   = pos;
         _lastUpdateTime = Date.now();
         _writeToFirestore(pos);
-        _scheduleAutoOff(); // reset 4h timer při aktivitě
+        _updateAccuracyDisplay(pos.coords.accuracy);
+        _scheduleAutoOff();
       }
     },
-    (err) => console.error('[live] watchPosition error:', err),
-    { enableHighAccuracy: true, timeout: 10_000, maximumAge: 5_000 }
+    (err) => {
+      console.error('[live] watchPosition error:', err);
+      if (err.code === 3) _updateAccuracyDisplay(null); // timeout = GPS ztráta
+    },
+    { enableHighAccuracy: true, timeout: GPS_TIMEOUT_MS, maximumAge: 0 }
   );
 }
 
@@ -291,6 +303,64 @@ function _removeAllMarkers() {
   _liveMarkers.clear();
 }
 
+/* ── Refresh + Accuracy display ──────────────────────────────── */
+
+export async function refreshLocation() {
+  if (!_isLive) {
+    showToast('Nejdřív zapni sdílení polohy.', 'warning');
+    return;
+  }
+
+  const refreshBtn = document.getElementById('btn-refresh-live');
+  if (refreshBtn) { refreshBtn.disabled = true; refreshBtn.innerHTML = '⏳'; }
+
+  try {
+    const position = await new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true,
+        timeout:    GPS_TIMEOUT_MS,
+        maximumAge: 0,
+      })
+    );
+
+    _lastPosition   = position;
+    _lastUpdateTime = Date.now();
+    await _writeToFirestore(position);
+    _updateAccuracyDisplay(position.coords.accuracy);
+    _scheduleAutoOff();
+
+    showToast(`📍 Aktualizováno (přesnost ±${Math.round(position.coords.accuracy)}m)`, 'success');
+
+  } catch (err) {
+    console.error('[live] Refresh error:', err);
+    showToast('Chyba při získání polohy.', 'error');
+  } finally {
+    if (refreshBtn) { refreshBtn.disabled = false; refreshBtn.innerHTML = '🔄'; }
+  }
+}
+
+function _updateAccuracyDisplay(accuracy) {
+  const el = document.getElementById('live-accuracy');
+  if (!el) return;
+
+  if (accuracy === null || accuracy === undefined) {
+    el.textContent = '🔴 GPS chyba';
+    el.className   = 'live-banner__accuracy live-banner__accuracy--bad';
+    return;
+  }
+
+  if (accuracy <= 20) {
+    el.textContent = `🟢 ±${Math.round(accuracy)}m`;
+    el.className   = 'live-banner__accuracy live-banner__accuracy--good';
+  } else if (accuracy <= 50) {
+    el.textContent = `🟡 ±${Math.round(accuracy)}m`;
+    el.className   = 'live-banner__accuracy live-banner__accuracy--ok';
+  } else {
+    el.textContent = `🔴 ±${Math.round(accuracy)}m`;
+    el.className   = 'live-banner__accuracy live-banner__accuracy--bad';
+  }
+}
+
 /* ── Auto-off ────────────────────────────────────────────────── */
 
 function _scheduleAutoOff() {
@@ -312,12 +382,16 @@ function _showBanner() {
   banner.innerHTML = `
     <div class="live-banner__content">
       <div class="live-banner__pulse"></div>
-      <span class="live-banner__text">Tvá poloha je live</span>
+      <span class="live-banner__icon">🟢</span>
+      <span class="live-banner__text">Live</span>
+      <span class="live-banner__accuracy" id="live-accuracy">📡 Hledám GPS…</span>
+      <button class="live-banner__btn live-banner__btn--refresh" id="btn-refresh-live" title="Aktualizovat polohu">🔄</button>
       <button class="live-banner__btn" id="btn-stop-live">Vypnout</button>
     </div>
   `;
   document.body.appendChild(banner);
   requestAnimationFrame(() => banner.classList.add('live-banner--visible'));
+  document.getElementById('btn-refresh-live')?.addEventListener('click', refreshLocation);
   document.getElementById('btn-stop-live')?.addEventListener('click', stopLiveLocation);
 }
 

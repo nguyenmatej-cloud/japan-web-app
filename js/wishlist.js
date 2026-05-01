@@ -1097,7 +1097,7 @@ async function calculateAllDistances() {
                 : 'Časový limit pro zjištění polohy vypršel.';
       showToast(msg, 'error');
     },
-    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
 }
 
@@ -1243,7 +1243,7 @@ function _addLocateControl(map) {
             btn.classList.remove('locate-btn--loading');
             btn.style.pointerEvents = '';
           },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
         );
       });
       return wrap;
