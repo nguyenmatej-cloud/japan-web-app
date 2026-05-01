@@ -5803,3 +5803,119 @@ button, .btn, [role="button"] {
   padding: 16px;
   margin: 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════
+   62 · MAP LAYER DROPDOWNS
+   ═══════════════════════════════════════════════════════════════ */
+
+.map-layer-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.map-layer-btn__count {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.map-layer-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: transform .2s, background .15s, color .15s;
+  flex-shrink: 0;
+  padding: 0;
+}
+
+.map-layer-chevron:hover {
+  background: var(--surface-2, rgba(0,0,0,.06));
+  color: var(--text-primary);
+}
+
+.map-layer-chevron--open {
+  transform: rotate(180deg);
+  color: var(--accent, #0A84FF);
+}
+
+.map-layer-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 180px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0,0,0,.14);
+  z-index: 9999;
+  overflow: hidden;
+  animation: dropdown-in .15s ease;
+}
+
+.map-layer-dropdown.hidden { display: none; }
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dropdown-empty {
+  padding: 12px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.dropdown-member {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  transition: background .12s;
+  border-bottom: 1px solid var(--border);
+}
+
+.dropdown-member:last-child { border-bottom: none; }
+
+.dropdown-member:hover { background: var(--surface-2, rgba(0,0,0,.05)); }
+
+.dropdown-member__avatar { font-size: 18px; flex-shrink: 0; }
+
+.dropdown-member__name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-member__status {
+  font-size: 11px;
+  color: #34C759;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.dropdown-member__time {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
