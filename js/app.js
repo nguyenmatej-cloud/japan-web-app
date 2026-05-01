@@ -192,6 +192,9 @@ function showAppUI() {
     // Router již existuje – jen znovu načti aktuální route
     router._onHashChange();
   }
+
+  // Sleduj nepřečtené zprávy v chatu globálně (badge v sidebaru)
+  import('./chat.js').then(m => m.trackUnreadGlobally?.()).catch(() => {});
 }
 
 /* ── Sidebar nav ─────────────────────────────────────────────── */
