@@ -1,5 +1,5 @@
 /**
- * itinerary.js – Sakura iOS Calendar redesign
+ * itinerary.js – Sakura iOS Calendar + editable cities
  */
 import { db } from './firebase-config.js';
 import { state, showToast, showConfirm } from './app.js';
@@ -13,10 +13,44 @@ import {
 const TRIP_START = new Date(2026, 8, 7); // Mon 7.9.2026
 const TRIP_DAYS  = 14;
 
-const CITY_DEFS = [
-  { id: 'tokyo', defaultName: 'Tokio', emoji: '🗼', days: [0,1,2,3,4,5],  color: '#FFB7C5', textColor: '#8B2252' },
-  { id: 'kyoto', defaultName: 'Kjóto', emoji: '⛩️',  days: [6,7,8,9,10], color: '#FFDDB8', textColor: '#7A4000' },
-  { id: 'osaka', defaultName: 'Osaka', emoji: '🦀',  days: [11,12,13],    color: '#DDD0F8', textColor: '#5A2D91' },
+// Default city per calendar day (dayKey → city object)
+const DEFAULT_CITIES = {
+  '2026-09-07': { name: 'Tokio',    emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  '2026-09-08': { name: 'Tokio',    emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  '2026-09-09': { name: 'Tokio',    emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  '2026-09-10': { name: 'Tokio',    emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  '2026-09-11': { name: 'Tokio',    emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  '2026-09-12': { name: 'Tokio',    emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  '2026-09-13': { name: 'Kjóto',   emoji: '⛩️', color: '#FFE4C4', textColor: '#D2691E' },
+  '2026-09-14': { name: 'Kjóto',   emoji: '⛩️', color: '#FFE4C4', textColor: '#D2691E' },
+  '2026-09-15': { name: 'Kjóto',   emoji: '⛩️', color: '#FFE4C4', textColor: '#D2691E' },
+  '2026-09-16': { name: 'Kjóto',   emoji: '⛩️', color: '#FFE4C4', textColor: '#D2691E' },
+  '2026-09-17': { name: 'Kjóto',   emoji: '⛩️', color: '#FFE4C4', textColor: '#D2691E' },
+  '2026-09-18': { name: 'Osaka',   emoji: '🐙', color: '#E0BBE4', textColor: '#7B2CBF' },
+  '2026-09-19': { name: 'Osaka',   emoji: '🐙', color: '#E0BBE4', textColor: '#7B2CBF' },
+  '2026-09-20': { name: 'Osaka',   emoji: '🐙', color: '#E0BBE4', textColor: '#7B2CBF' },
+};
+
+const QUICK_CITIES = [
+  { name: 'Tokio',     emoji: '🏙️', color: '#FFD9E2', textColor: '#C2185B' },
+  { name: 'Kjóto',    emoji: '⛩️', color: '#FFE4C4', textColor: '#D2691E' },
+  { name: 'Osaka',    emoji: '🐙', color: '#E0BBE4', textColor: '#7B2CBF' },
+  { name: 'Nara',     emoji: '🦌', color: '#C7F0DB', textColor: '#2D7A4F' },
+  { name: 'Hiroshima',emoji: '🕊️', color: '#B5D5FF', textColor: '#1E5BBF' },
+  { name: 'Hakone',   emoji: '♨️', color: '#FFE4A0', textColor: '#B8860B' },
+  { name: 'Nikkó',    emoji: '🌳', color: '#A8E6CF', textColor: '#2D7A4F' },
+  { name: 'Kanazawa', emoji: '🏯', color: '#FFD3A5', textColor: '#A0522D' },
+];
+
+const CUSTOM_COLORS = [
+  { color: '#FFD9E2', textColor: '#C2185B', label: 'Růžová' },
+  { color: '#FFE4C4', textColor: '#D2691E', label: 'Oranžová' },
+  { color: '#E0BBE4', textColor: '#7B2CBF', label: 'Levandule' },
+  { color: '#C7F0DB', textColor: '#2D7A4F', label: 'Mátová' },
+  { color: '#B5D5FF', textColor: '#1E5BBF', label: 'Modrá' },
+  { color: '#FFE4A0', textColor: '#B8860B', label: 'Žlutá' },
+  { color: '#FFB7D5', textColor: '#A0345A', label: 'Sakura' },
+  { color: '#FFD3A5', textColor: '#A0522D', label: 'Broskvová' },
 ];
 
 const CATEGORY_COLORS = {
@@ -60,14 +94,16 @@ const STATUS_META = {
 
 /* ── Module state ───────────────────────────────────────────── */
 
-let _activities      = [];
-let _ideas           = [];
-let _users           = {};
-let _cities          = {};
-let _activitiesUnsub = null;
-let _citiesUnsub     = null;
-let _selectedDay     = null;
-let _container       = null;
+let _activities         = [];
+let _ideas              = [];
+let _users              = {};
+let _cities             = { ...DEFAULT_CITIES };  // per-dayKey city objects
+let _activitiesUnsub    = null;
+let _citiesUnsub        = null;
+let _selectedDay        = null;
+let _editingCityDayKey  = null;
+let _escHandler         = null;
+let _container          = null;
 
 /* ── Public API ─────────────────────────────────────────────── */
 
@@ -88,19 +124,38 @@ export function render(container) {
 
 /* ── Helpers ────────────────────────────────────────────────── */
 
-function _cityForDay(dayIdx) {
-  return CITY_DEFS.find(c => c.days.includes(dayIdx));
+function _cityForKey(dayKey) {
+  return _cities[dayKey] ?? DEFAULT_CITIES[dayKey] ?? { name: '?', emoji: '📍', color: '#eee', textColor: '#333' };
 }
 
-function _getCityName(cityId) {
-  const def = CITY_DEFS.find(c => c.id === cityId);
-  return _cities[cityId] ?? def?.defaultName ?? cityId;
+// Groups consecutive days with the same city name into banner segments
+function _getCityGroups() {
+  const groups = [];
+  let cur = null;
+
+  for (let i = 0; i < TRIP_DAYS; i++) {
+    const date = new Date(TRIP_START);
+    date.setDate(TRIP_START.getDate() + i);
+    const key  = _dayKey(date);
+    const city = _cityForKey(key);
+
+    if (!cur || cur.name !== city.name) {
+      if (cur) groups.push(cur);
+      cur = { ...city, startIdx: i, dayKeys: [key] };
+    } else {
+      cur.dayKeys.push(key);
+    }
+  }
+  if (cur) groups.push(cur);
+  return groups;
 }
 
-function _cityDateRange(cityDef) {
-  const s = new Date(TRIP_START); s.setDate(s.getDate() + cityDef.days[0]);
-  const e = new Date(TRIP_START); e.setDate(e.getDate() + cityDef.days[cityDef.days.length - 1]);
-  return `${s.getDate()}.–${e.getDate()}.9`;
+function _cityGroupDateRange(group) {
+  const s = new Date(TRIP_START); s.setDate(s.getDate() + group.startIdx);
+  const e = new Date(TRIP_START); e.setDate(e.getDate() + group.startIdx + group.dayKeys.length - 1);
+  return s.getDate() === e.getDate()
+    ? `${s.getDate()}.9`
+    : `${s.getDate()}.–${e.getDate()}.9`;
 }
 
 function _dayKey(date) {
@@ -163,6 +218,13 @@ function _refreshCalendarGrid() {
   _attachDayCellHandlers();
 }
 
+function _refreshCityBanners() {
+  const rowEl = _container?.querySelector('#city-banners-row');
+  if (!rowEl) return;
+  rowEl.innerHTML = _buildCityBannersHTML();
+  _attachCityBannerHandlers();
+}
+
 function _refreshDetailActivities() {
   if (_selectedDay === null) return;
   const panel = _container?.querySelector('#day-detail-panel');
@@ -194,12 +256,12 @@ function _buildPetals() {
 }
 
 function _buildCityBannersHTML() {
-  return CITY_DEFS.map(c => `
-    <button class="city-banner" data-city="${c.id}"
-            style="--city-color:${c.color};--city-text:${c.textColor}">
-      <span class="city-banner__emoji">${c.emoji}</span>
-      <span class="city-banner__name">${_esc(_getCityName(c.id))}</span>
-      <span class="city-banner__dates">${_cityDateRange(c)}</span>
+  return _getCityGroups().map(g => `
+    <button class="city-banner" data-day-key="${g.dayKeys[0]}"
+            style="--city-color:${g.color};--city-text:${g.textColor}">
+      <span class="city-banner__emoji">${g.emoji}</span>
+      <span class="city-banner__name">${_esc(g.name)}</span>
+      <span class="city-banner__dates">${_cityGroupDateRange(g)}</span>
       <span class="city-banner__edit">✎</span>
     </button>`).join('');
 }
@@ -212,21 +274,23 @@ function _buildGridCells() {
   });
 
   return Array.from({ length: TRIP_DAYS }, (_, idx) => {
-    const date  = new Date(TRIP_START);
+    const date = new Date(TRIP_START);
     date.setDate(TRIP_START.getDate() + idx);
-    const key   = _dayKey(date);
-    const acts  = byDay[key] ?? [];
-    const city  = _cityForDay(idx);
-    const sel   = idx === _selectedDay;
+    const key  = _dayKey(date);
+    const acts = byDay[key] ?? [];
+    const city = _cityForKey(key);
+    const sel  = idx === _selectedDay;
 
-    const dots  = acts.slice(0, 4).map(a => {
+    const dots = acts.slice(0, 4).map(a => {
       const color = CATEGORY_COLORS[a.category] ?? '#C8A8C8';
       return `<span class="day-dot" style="background:${color}"></span>`;
     }).join('');
 
     return `
-      <div class="day-cell${sel ? ' day-cell--active' : ''}" data-day-idx="${idx}"
-           style="--cell-color:${city?.color ?? 'transparent'};--cell-text:${city?.textColor ?? 'inherit'}">
+      <div class="day-cell${sel ? ' day-cell--active' : ''}"
+           data-day-idx="${idx}" data-day-key="${key}"
+           style="--cell-color:${city.color};--cell-text:${city.textColor}">
+        <button class="day-edit-btn" data-day-key="${key}" aria-label="Změnit město">✏️</button>
         <span class="day-cell__num">${date.getDate()}</span>
         <div class="day-cell__dots">${dots}</div>
         ${acts.length ? `<span class="day-cell__badge">${acts.length}</span>` : ''}
@@ -235,22 +299,22 @@ function _buildGridCells() {
 }
 
 function _buildDayDetail(dayIdx) {
-  const date     = new Date(TRIP_START);
+  const date      = new Date(TRIP_START);
   date.setDate(TRIP_START.getDate() + dayIdx);
-  const key      = _dayKey(date);
-  const acts     = _activities.filter(a => a.dayKey === key)
-                    .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
-  const city     = _cityForDay(dayIdx);
-  const dayNum   = dayIdx + 1;
+  const key       = _dayKey(date);
+  const city      = _cityForKey(key);
+  const acts      = _activities.filter(a => a.dayKey === key)
+                     .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+  const dayNum    = dayIdx + 1;
   const dateLabel = date.toLocaleDateString('cs-CZ', {
     weekday: 'long', day: 'numeric', month: 'long',
   });
 
   return `
-    <div class="day-detail-card" style="--city-color:${city?.color ?? '#FFB7C5'}">
+    <div class="day-detail-card" style="--city-color:${city.color}">
       <div class="day-detail-card__header">
         <div>
-          <h2 class="day-detail-card__title">Den ${dayNum} · ${_esc(_getCityName(city?.id ?? ''))}</h2>
+          <h2 class="day-detail-card__title">Den ${dayNum} · ${_esc(city.name)}</h2>
           <p class="day-detail-card__date">${dateLabel}</p>
         </div>
         <button class="btn-sakura-ghost" id="btn-close-detail">✕</button>
@@ -336,7 +400,8 @@ function _buildActivitySakura(act) {
 
 function _attachDayCellHandlers() {
   _container?.querySelectorAll('.day-cell').forEach(cell => {
-    cell.addEventListener('click', () => {
+    cell.addEventListener('click', e => {
+      if (e.target.closest('.day-edit-btn')) return; // handled separately
       const idx = parseInt(cell.dataset.dayIdx, 10);
       if (_selectedDay === idx) {
         _selectedDay = null;
@@ -349,18 +414,18 @@ function _attachDayCellHandlers() {
       }
     });
   });
+
+  _container?.querySelectorAll('.day-edit-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      _openCityEditModal(btn.dataset.dayKey);
+    });
+  });
 }
 
 function _attachCityBannerHandlers() {
   _container?.querySelectorAll('.city-banner').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      const cityId  = btn.dataset.city;
-      const current = _getCityName(cityId);
-      const newName = prompt(`Přejmenuj město (${current}):`, current);
-      if (newName?.trim() && newName.trim() !== current) {
-        await _saveCityName(cityId, newName.trim());
-      }
-    });
+    btn.addEventListener('click', () => _openCityEditModal(btn.dataset.dayKey));
   });
 }
 
@@ -388,8 +453,7 @@ function _attachDetailHandlers() {
     form.hidden = true;
     panel.querySelector('#btn-add-activity')?.classList.remove('hidden');
     ['#act-title', '#act-place', '#act-desc'].forEach(sel => {
-      const el = panel.querySelector(sel);
-      if (el) el.value = '';
+      const el = panel.querySelector(sel); if (el) el.value = '';
     });
     const t = panel.querySelector('#act-time');
     const d = panel.querySelector('#act-duration');
@@ -404,12 +468,12 @@ function _attachDetailHandlers() {
   panel.querySelector('#act-idea')?.addEventListener('change', e => {
     const idea = _ideas.find(x => x.id === e.target.value);
     if (!idea) return;
-    const titleEl = panel.querySelector('#act-title');
-    const descEl  = panel.querySelector('#act-desc');
-    const placeEl = panel.querySelector('#act-place');
-    if (titleEl) titleEl.value = idea.title       ?? '';
-    if (descEl)  descEl.value  = idea.description ?? '';
-    if (placeEl) placeEl.value = idea.city        ?? '';
+    const t = panel.querySelector('#act-title');
+    const desc = panel.querySelector('#act-desc');
+    const p = panel.querySelector('#act-place');
+    if (t)    t.value    = idea.title       ?? '';
+    if (desc) desc.value = idea.description ?? '';
+    if (p)    p.value    = idea.city        ?? '';
   });
 
   panel.querySelector('#btn-save-activity')?.addEventListener('click', _addActivity);
@@ -427,20 +491,16 @@ function _attachActivityHandlers(listEl) {
   });
 }
 
-/* ── Detail panel open/close ────────────────────────────────── */
+/* ── Detail panel ───────────────────────────────────────────── */
 
 function _openDetailPanel(dayIdx, scroll) {
   const panel = _container?.querySelector('#day-detail-panel');
   if (!panel) return;
-
   panel.innerHTML = _buildDayDetail(dayIdx);
-  panel.offsetHeight; // force reflow for CSS transition
+  panel.offsetHeight; // force reflow
   panel.classList.add('day-detail-panel--open');
   _attachDetailHandlers();
-
-  if (scroll) {
-    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200);
-  }
+  if (scroll) setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200);
 }
 
 function _closeDetailPanel() {
@@ -448,6 +508,175 @@ function _closeDetailPanel() {
   if (!panel) return;
   panel.classList.remove('day-detail-panel--open');
   setTimeout(() => { if (panel) panel.innerHTML = ''; }, 420);
+}
+
+/* ── City edit modal ────────────────────────────────────────── */
+
+function _openCityEditModal(dayKey) {
+  if (!dayKey) return;
+  _editingCityDayKey = dayKey;
+
+  const city = _cityForKey(dayKey);
+  const [y, m, d] = dayKey.split('-').map(Number);
+  const date      = new Date(y, m - 1, d);
+  const dayLabel  = date.toLocaleDateString('cs-CZ', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  const modal = document.createElement('div');
+  modal.className = 'city-edit-modal';
+  modal.id        = 'city-edit-modal';
+  modal.innerHTML = `
+    <div class="city-edit-modal__backdrop" data-close></div>
+    <div class="city-edit-modal__content">
+      <button class="city-edit-modal__close" data-close>×</button>
+
+      <div class="city-edit-modal__header">
+        <h2>🌸 Změnit město</h2>
+        <p class="city-edit-modal__date">${_esc(dayLabel)}</p>
+        <p class="city-edit-modal__current">Aktuálně: <strong>${city.emoji} ${_esc(city.name)}</strong></p>
+      </div>
+
+      <div class="city-edit-modal__body">
+        <div class="city-edit-section">
+          <h3>⚡ Quick select</h3>
+          <div class="quick-cities-grid">
+            ${QUICK_CITIES.map(c => `
+              <button class="quick-city-btn${c.name === city.name ? ' quick-city-btn--active' : ''}"
+                      data-name="${_esc(c.name)}" data-emoji="${_esc(c.emoji)}"
+                      data-color="${c.color}" data-text-color="${c.textColor}"
+                      style="background:${c.color};color:${c.textColor}">
+                <span class="quick-city-emoji">${c.emoji}</span>
+                <span class="quick-city-name">${_esc(c.name)}</span>
+              </button>`).join('')}
+          </div>
+        </div>
+
+        <div class="city-edit-section">
+          <h3>✏️ Vlastní město</h3>
+          <div class="form-row">
+            <div class="form-group" style="flex:0 0 80px">
+              <label class="form-label">Emoji</label>
+              <input id="custom-city-emoji" type="text" class="form-input city-emoji-input"
+                     maxlength="2" value="${_esc(city.emoji)}" />
+            </div>
+            <div class="form-group" style="flex:1">
+              <label class="form-label">Název</label>
+              <input id="custom-city-name" type="text" class="form-input"
+                     placeholder="Sapporo" value="${_esc(city.name)}" />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Barva</label>
+            <div class="city-color-grid">
+              ${CUSTOM_COLORS.map(c => `
+                <button class="city-color-btn${city.color === c.color ? ' city-color-btn--active' : ''}"
+                        data-color="${c.color}" data-text-color="${c.textColor}"
+                        style="background:${c.color};color:${c.textColor}"
+                        title="${c.label}">🌸</button>`).join('')}
+            </div>
+          </div>
+          <button class="add-cta-sakura" id="btn-apply-custom">✨ Použít vlastní</button>
+        </div>
+      </div>
+
+      <div class="city-edit-modal__footer">
+        <button class="btn-sakura-ghost" id="btn-reset-cities">🔄 Vrátit default rozložení</button>
+      </div>
+    </div>`;
+
+  document.body.appendChild(modal);
+  requestAnimationFrame(() => modal.classList.add('city-edit-modal--open'));
+
+  // Close handlers
+  modal.querySelectorAll('[data-close]').forEach(el => {
+    el.addEventListener('click', _closeCityEditModal);
+  });
+
+  // Quick city
+  modal.querySelectorAll('.quick-city-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await _applyCityToDay(dayKey, {
+        name:      btn.dataset.name,
+        emoji:     btn.dataset.emoji,
+        color:     btn.dataset.color,
+        textColor: btn.dataset.textColor,
+      });
+      _closeCityEditModal();
+    });
+  });
+
+  // Color picker
+  let selColor     = city.color;
+  let selTextColor = city.textColor;
+  modal.querySelectorAll('.city-color-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      modal.querySelectorAll('.city-color-btn').forEach(b => b.classList.remove('city-color-btn--active'));
+      btn.classList.add('city-color-btn--active');
+      selColor     = btn.dataset.color;
+      selTextColor = btn.dataset.textColor;
+    });
+  });
+
+  // Apply custom
+  modal.querySelector('#btn-apply-custom')?.addEventListener('click', async () => {
+    const emoji = modal.querySelector('#custom-city-emoji')?.value.trim() || '📍';
+    const name  = modal.querySelector('#custom-city-name')?.value.trim();
+    if (!name) { showToast('Vyplň název města.', 'warning'); return; }
+    await _applyCityToDay(dayKey, { name, emoji, color: selColor, textColor: selTextColor });
+    _closeCityEditModal();
+  });
+
+  // Reset
+  modal.querySelector('#btn-reset-cities')?.addEventListener('click', _resetCitiesToDefault);
+
+  // ESC
+  _escHandler = e => { if (e.key === 'Escape') _closeCityEditModal(); };
+  document.addEventListener('keydown', _escHandler);
+}
+
+function _closeCityEditModal() {
+  const modal = document.getElementById('city-edit-modal');
+  if (!modal) return;
+  modal.classList.remove('city-edit-modal--open');
+  setTimeout(() => modal.remove(), 250);
+  if (_escHandler) { document.removeEventListener('keydown', _escHandler); _escHandler = null; }
+  _editingCityDayKey = null;
+}
+
+async function _applyCityToDay(dayKey, city) {
+  try {
+    await setDoc(doc(db, 'itineraryCities', dayKey), {
+      dayKey,
+      name:      city.name,
+      emoji:     city.emoji,
+      color:     city.color,
+      textColor: city.textColor,
+      updatedAt: serverTimestamp(),
+    });
+    showToast(`${city.emoji} ${city.name} nastaven${city.name.endsWith('a') ? 'a' : ''}!`, 'success');
+  } catch (err) {
+    console.error('[itinerary] applyCityToDay:', err);
+    showToast('Nepodařilo se uložit město.', 'error');
+    throw err;
+  }
+}
+
+async function _resetCitiesToDefault() {
+  const ok = await showConfirm(
+    'Vrátit default rozložení?',
+    'Tokio: 7–12.9 · Kjóto: 13–17.9 · Osaka: 18–20.9\n\nVlastní změny budou ztraceny.',
+    'Vrátit'
+  );
+  if (!ok) return;
+
+  try {
+    const snap = await getDocs(collection(db, 'itineraryCities'));
+    await Promise.all(snap.docs.map(d => deleteDoc(doc(db, 'itineraryCities', d.id))));
+    showToast('🔄 Reset na default rozložení!', 'success');
+    _closeCityEditModal();
+  } catch (err) {
+    console.error('[itinerary] resetCities:', err);
+    showToast('Chyba při resetu.', 'error');
+  }
 }
 
 /* ── CRUD ───────────────────────────────────────────────────── */
@@ -522,16 +751,6 @@ async function _deleteActivity(id) {
   }
 }
 
-async function _saveCityName(cityId, name) {
-  try {
-    await setDoc(doc(db, 'itineraryCities', cityId), { name }, { merge: true });
-    showToast(`Město přejmenováno na "${name}".`, 'success');
-  } catch (err) {
-    console.error('[itinerary] saveCityName:', err);
-    showToast('Nepodařilo se uložit název.', 'error');
-  }
-}
-
 /* ── Stats ──────────────────────────────────────────────────── */
 
 function _updateStats() {
@@ -576,27 +795,39 @@ function _setupActivitiesListener() {
     _refreshCalendarGrid();
     _refreshDetailActivities();
     _updateStats();
-  }, err => console.error('[itinerary] snapshot:', err));
+  }, err => console.error('[itinerary] activities snapshot:', err));
 }
 
 function _setupCitiesListener() {
   _citiesUnsub?.();
   _citiesUnsub = onSnapshot(collection(db, 'itineraryCities'), snap => {
-    _cities = {};
-    snap.docs.forEach(d => { _cities[d.id] = d.data().name; });
-    // Update banner name text in-place
-    CITY_DEFS.forEach(c => {
-      const nameEl = _container?.querySelector(`.city-banner[data-city="${c.id}"] .city-banner__name`);
-      if (nameEl) nameEl.textContent = _getCityName(c.id);
-    });
-    // Update open detail panel title
-    if (_selectedDay !== null) {
-      const city    = _cityForDay(_selectedDay);
-      const titleEl = _container?.querySelector('.day-detail-card__title');
-      if (titleEl) {
-        const dayNum = _selectedDay + 1;
-        titleEl.textContent = `Den ${dayNum} · ${_getCityName(city?.id ?? '')}`;
+    // Start fresh from defaults
+    _cities = { ...DEFAULT_CITIES };
+
+    // Override with Firestore per-day data
+    snap.docs.forEach(d => {
+      const dayKey = d.id;
+      if (DEFAULT_CITIES[dayKey]) {
+        const data = d.data();
+        _cities[dayKey] = {
+          name:      data.name,
+          emoji:     data.emoji,
+          color:     data.color,
+          textColor: data.textColor,
+        };
       }
+    });
+
+    _refreshCityBanners();
+    _refreshCalendarGrid();
+
+    // Update open detail title
+    if (_selectedDay !== null) {
+      const date = new Date(TRIP_START);
+      date.setDate(TRIP_START.getDate() + _selectedDay);
+      const city    = _cityForKey(_dayKey(date));
+      const titleEl = _container?.querySelector('.day-detail-card__title');
+      if (titleEl) titleEl.textContent = `Den ${_selectedDay + 1} · ${city.name}`;
     }
   }, err => console.error('[itinerary] cities snapshot:', err));
 }
@@ -606,8 +837,9 @@ function _setupCitiesListener() {
 function _cleanup() {
   _activitiesUnsub?.();
   _citiesUnsub?.();
-  _activitiesUnsub = null;
-  _citiesUnsub     = null;
-  _container       = null;
-  _selectedDay     = null;
+  _activitiesUnsub   = null;
+  _citiesUnsub       = null;
+  _container         = null;
+  _selectedDay       = null;
+  _closeCityEditModal();
 }

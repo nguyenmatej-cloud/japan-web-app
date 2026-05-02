@@ -6821,3 +6821,219 @@ button, .btn, [role="button"] {
   .city-banner__name     { font-size: 11px; }
   .city-banner__emoji    { font-size: 16px; }
 }
+
+/* ════════════════════════════════════════════════════════════
+   66. Itinerář – City Edit Modal + Edit Button
+   ════════════════════════════════════════════════════════════ */
+
+/* ─── Day cell edit button ─────────────────────────────────── */
+.day-edit-btn {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.85);
+  border: 1px solid rgba(0,0,0,.1);
+  font-size: 10px;
+  cursor: pointer;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 180ms, background 180ms, transform 200ms cubic-bezier(0.34,1.56,0.64,1);
+  padding: 0;
+  line-height: 1;
+}
+
+.day-cell:hover .day-edit-btn { opacity: 1; }
+.day-edit-btn:hover            { background: #FF6B9D; transform: scale(1.25); border-color: #FF6B9D; }
+
+[data-theme="dark"] .day-edit-btn { background: rgba(40,40,40,.85); border-color: rgba(255,255,255,.15); }
+
+/* Always visible on touch devices */
+@media (hover: none) {
+  .day-edit-btn { opacity: .55; }
+}
+
+/* ─── Modal overlay ────────────────────────────────────────── */
+.city-edit-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease;
+  padding: 16px;
+}
+
+.city-edit-modal--open {
+  opacity: 1;
+  pointer-events: all;
+}
+
+.city-edit-modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* ─── Modal content ────────────────────────────────────────── */
+.city-edit-modal__content {
+  position: relative;
+  background: var(--bg-base, #fff);
+  border-radius: 24px;
+  width: 100%;
+  max-width: 460px;
+  max-height: 88vh;
+  overflow-y: auto;
+  box-shadow: 0 24px 64px rgba(0,0,0,.28);
+  transform: scale(0.94) translateY(8px);
+  transition: transform 300ms cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.city-edit-modal--open .city-edit-modal__content { transform: scale(1) translateY(0); }
+
+.city-edit-modal__close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255,183,213,.18);
+  border: none;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #C2185B;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.city-edit-modal__close:hover { background: #FF6B9D; color: #fff; transform: scale(1.1) rotate(90deg); }
+[data-theme="dark"] .city-edit-modal__close { background: rgba(255,183,213,.22); color: #FF8FAB; }
+
+/* ─── Modal header ─────────────────────────────────────────── */
+.city-edit-modal__header {
+  background: linear-gradient(135deg, #FFE4EC, #FFD9E2);
+  padding: 26px 22px 18px;
+  text-align: center;
+  border-radius: 24px 24px 0 0;
+}
+
+[data-theme="dark"] .city-edit-modal__header {
+  background: linear-gradient(135deg, rgba(255,183,213,.18), rgba(255,217,226,.08));
+}
+
+.city-edit-modal__header h2 {
+  margin: 0 0 5px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #C2185B;
+  letter-spacing: -.02em;
+}
+
+[data-theme="dark"] .city-edit-modal__header h2 { color: #FF8FAB; }
+
+.city-edit-modal__date    { margin: 0 0 3px; font-size: 12px; color: var(--text-secondary); font-weight: 600; text-transform: capitalize; }
+.city-edit-modal__current { margin: 0; font-size: 12px; color: var(--text-muted); }
+.city-edit-modal__current strong { color: var(--text); }
+
+/* ─── Modal body ───────────────────────────────────────────── */
+.city-edit-modal__body {
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.city-edit-section h3 {
+  margin: 0 0 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #C2185B;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+}
+
+[data-theme="dark"] .city-edit-section h3 { color: #FF8FAB; }
+
+/* ─── Quick cities grid ────────────────────────────────────── */
+.quick-cities-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+}
+
+.quick-city-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 6px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 200ms cubic-bezier(0.34,1.56,0.64,1);
+}
+
+.quick-city-btn:hover      { transform: translateY(-2px) scale(1.04); box-shadow: 0 5px 14px rgba(0,0,0,.12); }
+.quick-city-btn--active    { border-color: currentColor; box-shadow: 0 4px 12px rgba(0,0,0,.15); transform: scale(1.04); }
+
+.quick-city-emoji { font-size: 22px; line-height: 1; }
+.quick-city-name  { font-size: 11px; font-weight: 700; }
+
+/* ─── Custom city inputs ───────────────────────────────────── */
+.city-emoji-input { text-align: center; font-size: 22px !important; }
+
+/* ─── Color picker ─────────────────────────────────────────── */
+.city-color-grid {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.city-color-btn {
+  aspect-ratio: 1;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 200ms cubic-bezier(0.34,1.56,0.64,1);
+  padding: 0;
+}
+
+.city-color-btn:hover       { transform: scale(1.18); }
+.city-color-btn--active     { border-color: currentColor; transform: scale(1.18); box-shadow: 0 3px 10px rgba(0,0,0,.14); }
+
+/* ─── Modal footer ─────────────────────────────────────────── */
+.city-edit-modal__footer {
+  padding: 14px 20px 22px;
+  border-top: 1px solid rgba(255,183,213,.2);
+}
+
+.city-edit-modal__footer .btn-sakura-ghost { width: 100%; }
+
+/* ─── Mobile ───────────────────────────────────────────────── */
+@media (max-width: 400px) {
+  .quick-cities-grid        { grid-template-columns: repeat(2, 1fr); }
+  .city-color-grid          { grid-template-columns: repeat(4, 1fr); }
+  .city-edit-modal__body    { padding: 16px; gap: 18px; }
+  .city-edit-modal__header  { padding: 22px 16px 16px; }
+}
