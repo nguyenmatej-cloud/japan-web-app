@@ -1,17 +1,45 @@
 /**
- * itinerary.js – 14-denní plán cesty 7.–20. 9. 2026.
+ * itinerary.js – Sakura iOS Calendar redesign
  */
 import { db } from './firebase-config.js';
 import { state, showToast, showConfirm } from './app.js';
 import {
   collection, query, orderBy, onSnapshot,
-  addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs,
+  addDoc, updateDoc, deleteDoc, doc, serverTimestamp, getDocs, setDoc,
 } from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js';
 
-/* ── Konstanty ───────────────────────────────────────────────── */
+/* ── Constants ──────────────────────────────────────────────── */
 
-const TRIP_START = new Date(2026, 8, 7);  // 7. 9. 2026
+const TRIP_START = new Date(2026, 8, 7); // Mon 7.9.2026
 const TRIP_DAYS  = 14;
+
+const CITY_DEFS = [
+  { id: 'tokyo', defaultName: 'Tokio', emoji: '🗼', days: [0,1,2,3,4,5],  color: '#FFB7C5', textColor: '#8B2252' },
+  { id: 'kyoto', defaultName: 'Kjóto', emoji: '⛩️',  days: [6,7,8,9,10], color: '#FFDDB8', textColor: '#7A4000' },
+  { id: 'osaka', defaultName: 'Osaka', emoji: '🦀',  days: [11,12,13],    color: '#DDD0F8', textColor: '#5A2D91' },
+];
+
+const CATEGORY_COLORS = {
+  chrám:      '#E8A0BF',
+  jídlo:      '#FF9966',
+  nakupování: '#FFD700',
+  park:       '#90EE90',
+  muzeum:     '#87CEEB',
+  doprava:    '#D3D3D3',
+  ubytování:  '#DDA0DD',
+  výlet:      '#98FB98',
+};
+
+const PETAL_CONFIGS = [
+  { dur: 8,    delay: 0    },
+  { dur: 10,   delay: 1.5  },
+  { dur: 7,    delay: 3    },
+  { dur: 9,    delay: 0.5  },
+  { dur: 11,   delay: 2    },
+  { dur: 8.5,  delay: 4    },
+  { dur: 9.5,  delay: 1    },
+  { dur: 7.5,  delay: 3.5  },
+];
 
 const DURATIONS = [
   { value: 0.5, label: '30 min' },
@@ -30,18 +58,18 @@ const STATUS_META = {
   skipped: { label: 'Přeskočeno', icon: '⏭️' },
 };
 
-/* ── Stav modulu ─────────────────────────────────────────────── */
+/* ── Module state ───────────────────────────────────────────── */
 
 let _activities      = [];
 let _ideas           = [];
 let _users           = {};
+let _cities          = {};
 let _activitiesUnsub = null;
+let _citiesUnsub     = null;
 let _selectedDay     = null;
 let _container       = null;
 
-/* ════════════════════════════════════════════════════════════
-   RENDER
-   ════════════════════════════════════════════════════════════ */
+/* ── Public API ─────────────────────────────────────────────── */
 
 export function render(container) {
   _container = container;
@@ -50,303 +78,393 @@ export function render(container) {
   setTimeout(() => {
     _loadUsers().then(() => {
       _loadIdeas();
-      _setupListener();
+      _setupActivitiesListener();
+      _setupCitiesListener();
     });
   }, 100);
 
   return _cleanup;
 }
 
+/* ── Helpers ────────────────────────────────────────────────── */
+
+function _cityForDay(dayIdx) {
+  return CITY_DEFS.find(c => c.days.includes(dayIdx));
+}
+
+function _getCityName(cityId) {
+  const def = CITY_DEFS.find(c => c.id === cityId);
+  return _cities[cityId] ?? def?.defaultName ?? cityId;
+}
+
+function _cityDateRange(cityDef) {
+  const s = new Date(TRIP_START); s.setDate(s.getDate() + cityDef.days[0]);
+  const e = new Date(TRIP_START); e.setDate(e.getDate() + cityDef.days[cityDef.days.length - 1]);
+  return `${s.getDate()}.–${e.getDate()}.9`;
+}
+
+function _dayKey(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function _esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ── Full page render ───────────────────────────────────────── */
+
 function _renderPage() {
   if (!_container) return;
 
-  const view = _selectedDay ? _renderDayDetail() : _renderCalendar();
-
   _container.innerHTML = `
-    <div class="page page--enter itinerary-page">
-      <div class="page-header">
-        <h1 class="page-header__title">🗓️ Itinerář</h1>
-        <p class="page-header__subtitle">Plán cesty 7.–20. 9. 2026 (14 dní)</p>
+    <div class="page page--enter itinerary-sakura">
+      ${_buildPetals()}
+
+      <div class="page-header" style="position:relative;z-index:1">
+        <h1 class="page-header__title">🌸 Itinerář</h1>
+        <p class="page-header__subtitle">7.–20. září 2026 · 14 dní</p>
       </div>
 
-      <div class="itinerary-stats" id="itinerary-stats"></div>
+      <div id="itinerary-stats" class="itinerary-stats"></div>
 
-      ${view}
-    </div>
-  `;
+      <div class="city-banners-row" id="city-banners-row">
+        ${_buildCityBannersHTML()}
+      </div>
+
+      <div class="sakura-calendar">
+        <div class="calendar-weekdays">
+          ${['Po','Út','St','Čt','Pá','So','Ne'].map(d => `<span>${d}</span>`).join('')}
+        </div>
+        <div class="sakura-calendar__grid" id="calendar-grid">
+          ${_buildGridCells()}
+        </div>
+      </div>
+
+      <div class="day-detail-panel" id="day-detail-panel"></div>
+    </div>`;
 
   setTimeout(() => {
     _updateStats();
-    if (_selectedDay) _attachDayHandlers();
-    else _attachCalendarHandlers();
+    _attachDayCellHandlers();
+    _attachCityBannerHandlers();
+    if (_selectedDay !== null) _openDetailPanel(_selectedDay, false);
   }, 50);
 }
 
-/* ════════════════════════════════════════════════════════════
-   CALENDAR VIEW
-   ════════════════════════════════════════════════════════════ */
+/* ── Partial updates ────────────────────────────────────────── */
 
-function _renderCalendar() {
-  const days = Array.from({ length: TRIP_DAYS }, (_, i) => {
-    const d = new Date(TRIP_START);
-    d.setDate(TRIP_START.getDate() + i);
-    return d;
-  });
+function _refreshCalendarGrid() {
+  const gridEl = _container?.querySelector('#calendar-grid');
+  if (!gridEl) { _renderPage(); return; }
+  gridEl.innerHTML = _buildGridCells();
+  _attachDayCellHandlers();
+}
 
+function _refreshDetailActivities() {
+  if (_selectedDay === null) return;
+  const panel = _container?.querySelector('#day-detail-panel');
+  if (!panel?.classList.contains('day-detail-panel--open')) return;
+  const listEl = panel.querySelector('#activities-list');
+  if (!listEl) return;
+
+  const date = new Date(TRIP_START);
+  date.setDate(TRIP_START.getDate() + _selectedDay);
+  const key  = _dayKey(date);
+  const acts = _activities.filter(a => a.dayKey === key)
+                 .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+
+  listEl.innerHTML = acts.length === 0
+    ? `<div class="empty-state--sakura"><p>🌸 Žádné aktivity – přidej první!</p></div>`
+    : acts.map(_buildActivitySakura).join('');
+
+  _attachActivityHandlers(listEl);
+}
+
+/* ── Build HTML ─────────────────────────────────────────────── */
+
+function _buildPetals() {
+  return `<div class="sakura-petals-bg" aria-hidden="true">
+    ${PETAL_CONFIGS.map((c, i) =>
+      `<div class="sakura-petal" style="--i:${i};--dur:${c.dur}s;--delay:${c.delay}s">🌸</div>`
+    ).join('')}
+  </div>`;
+}
+
+function _buildCityBannersHTML() {
+  return CITY_DEFS.map(c => `
+    <button class="city-banner" data-city="${c.id}"
+            style="--city-color:${c.color};--city-text:${c.textColor}">
+      <span class="city-banner__emoji">${c.emoji}</span>
+      <span class="city-banner__name">${_esc(_getCityName(c.id))}</span>
+      <span class="city-banner__dates">${_cityDateRange(c)}</span>
+      <span class="city-banner__edit">✎</span>
+    </button>`).join('');
+}
+
+function _buildGridCells() {
   const byDay = {};
   _activities.forEach(a => {
     if (!byDay[a.dayKey]) byDay[a.dayKey] = [];
     byDay[a.dayKey].push(a);
   });
 
-  return `
-    <div class="itinerary-calendar">
-      ${days.map((date, idx) => {
-        const key   = _dayKey(date);
-        const acts  = byDay[key] ?? [];
-        const wday  = date.toLocaleDateString('cs-CZ', { weekday: 'long' });
-        const dnum  = date.getDate();
-        const month = date.toLocaleDateString('cs-CZ', { month: 'short' });
+  return Array.from({ length: TRIP_DAYS }, (_, idx) => {
+    const date  = new Date(TRIP_START);
+    date.setDate(TRIP_START.getDate() + idx);
+    const key   = _dayKey(date);
+    const acts  = byDay[key] ?? [];
+    const city  = _cityForDay(idx);
+    const sel   = idx === _selectedDay;
 
-        return `
-          <div class="day-card" data-day-key="${key}">
-            <div class="day-card__header">
-              <div class="day-card__num">${dnum}.${month}</div>
-              <div class="day-card__label">
-                <span class="day-card__weekday">${wday}</span>
-                <span class="day-card__index">Den ${idx + 1}</span>
-              </div>
-              <div class="day-card__count">
-                ${acts.length ? `<span class="day-card__badge">${acts.length}</span>` : ''}
-              </div>
-            </div>
+    const dots  = acts.slice(0, 4).map(a => {
+      const color = CATEGORY_COLORS[a.category] ?? '#C8A8C8';
+      return `<span class="day-dot" style="background:${color}"></span>`;
+    }).join('');
 
-            ${acts.length
-              ? `<div class="day-card__preview">
-                   ${acts.slice(0, 3).map(a => `
-                     <div class="day-act-preview">
-                       <span class="day-act-time">${_esc(a.time ?? '--:--')}</span>
-                       <span class="day-act-name">${_esc(a.title)}</span>
-                     </div>`).join('')}
-                   ${acts.length > 3 ? `<div class="day-act-more">+${acts.length - 3} další</div>` : ''}
-                 </div>`
-              : `<div class="day-card__empty"><span>+ Naplánuj aktivity</span></div>`}
-          </div>`;
-      }).join('')}
-    </div>`;
+    return `
+      <div class="day-cell${sel ? ' day-cell--active' : ''}" data-day-idx="${idx}"
+           style="--cell-color:${city?.color ?? 'transparent'};--cell-text:${city?.textColor ?? 'inherit'}">
+        <span class="day-cell__num">${date.getDate()}</span>
+        <div class="day-cell__dots">${dots}</div>
+        ${acts.length ? `<span class="day-cell__badge">${acts.length}</span>` : ''}
+      </div>`;
+  }).join('');
 }
 
-function _attachCalendarHandlers() {
-  _container?.querySelectorAll('.day-card').forEach(card => {
-    card.addEventListener('click', () => {
-      const [y, m, d] = card.dataset.dayKey.split('-').map(Number);
-      _selectedDay = new Date(y, m - 1, d);
-      _renderPage();
-    });
+function _buildDayDetail(dayIdx) {
+  const date     = new Date(TRIP_START);
+  date.setDate(TRIP_START.getDate() + dayIdx);
+  const key      = _dayKey(date);
+  const acts     = _activities.filter(a => a.dayKey === key)
+                    .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
+  const city     = _cityForDay(dayIdx);
+  const dayNum   = dayIdx + 1;
+  const dateLabel = date.toLocaleDateString('cs-CZ', {
+    weekday: 'long', day: 'numeric', month: 'long',
   });
-}
-
-/* ════════════════════════════════════════════════════════════
-   DAY DETAIL VIEW
-   ════════════════════════════════════════════════════════════ */
-
-function _renderDayDetail() {
-  const key     = _dayKey(_selectedDay);
-  const acts    = _activities.filter(a => a.dayKey === key)
-                   .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
-  const dayLabel = _selectedDay.toLocaleDateString('cs-CZ', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
-  const dayIdx   = Math.floor((_selectedDay - TRIP_START) / 86_400_000) + 1;
-  const hasMap   = acts.some(a => a.location?.lat != null);
 
   return `
-    <div class="day-detail">
-      <button class="day-detail__back" id="btn-back">← Zpět na kalendář</button>
-
-      <div class="day-detail__header">
-        <h2 class="day-detail__title">Den ${dayIdx}</h2>
-        <p class="day-detail__date">${dayLabel}</p>
-      </div>
-
-      <div class="day-detail__actions">
-        <button class="add-cta" id="btn-add-activity">
-          <span class="add-cta__plus">+</span>
-          <span class="add-cta__text">Přidat aktivitu</span>
-        </button>
-        ${hasMap ? `<button class="btn btn--ghost" id="btn-show-map">🗺️ Zobrazit na mapě</button>` : ''}
-      </div>
-
-      <div class="inline-form" id="add-form" hidden>
-        <div class="inline-form__header">
-          <h2 class="inline-form__title">➕ Nová aktivita</h2>
-          <button class="inline-form__close" id="btn-close-form" aria-label="Zavřít">×</button>
+    <div class="day-detail-card" style="--city-color:${city?.color ?? '#FFB7C5'}">
+      <div class="day-detail-card__header">
+        <div>
+          <h2 class="day-detail-card__title">Den ${dayNum} · ${_esc(_getCityName(city?.id ?? ''))}</h2>
+          <p class="day-detail-card__date">${dateLabel}</p>
         </div>
-        <div class="inline-form__body">
+        <button class="btn-sakura-ghost" id="btn-close-detail">✕</button>
+      </div>
+
+      <button class="add-cta-sakura" id="btn-add-activity">＋ Přidat aktivitu</button>
+
+      <div class="inline-form-sakura" id="add-form" hidden>
+        <div class="form-group">
+          <label class="form-label">Z Wishlistu</label>
+          <select id="act-idea" class="form-input">
+            <option value="">-- vlastní --</option>
+            ${_ideas.map(i => `<option value="${i.id}">${_esc(i.title)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Název *</label>
+          <input id="act-title" type="text" class="form-input" placeholder="Senso-ji Temple" />
+        </div>
+        <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Z Wishlistu (volitelné)</label>
-            <select id="act-idea" class="form-input">
-              <option value="">-- vlastní --</option>
-              ${_ideas.map(i => `<option value="${i.id}">${_esc(i.title)}</option>`).join('')}
+            <label class="form-label">Čas</label>
+            <input id="act-time" type="time" class="form-input" value="09:00" />
+          </div>
+          <div class="form-group">
+            <label class="form-label">Délka</label>
+            <select id="act-duration" class="form-input">
+              ${DURATIONS.map(d => `<option value="${d.value}"${d.value === 2 ? ' selected' : ''}>${d.label}</option>`).join('')}
             </select>
           </div>
-          <div class="form-group">
-            <label class="form-label">Název *</label>
-            <input id="act-title" type="text" class="form-input" placeholder="Senso-ji Temple" />
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Čas</label>
-              <input id="act-time" type="time" class="form-input" value="09:00" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Doba trvání</label>
-              <select id="act-duration" class="form-input">
-                ${DURATIONS.map(d => `<option value="${d.value}"${d.value === 2 ? ' selected' : ''}>${d.label}</option>`).join('')}
-              </select>
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Místo (volitelné)</label>
-            <input id="act-place" type="text" class="form-input" placeholder="Asakusa, Tokyo" />
-          </div>
-          <div class="form-group">
-            <label class="form-label">Popis (volitelné)</label>
-            <textarea id="act-desc" class="form-input" rows="2" placeholder="Detaily…"></textarea>
-          </div>
         </div>
-        <div class="inline-form__footer">
+        <div class="form-group">
+          <label class="form-label">Místo</label>
+          <input id="act-place" type="text" class="form-input" placeholder="Asakusa, Tokyo" />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Popis</label>
+          <textarea id="act-desc" class="form-input" rows="2" placeholder="Detaily…"></textarea>
+        </div>
+        <div class="inline-form-sakura__footer">
           <button class="btn btn--ghost" id="btn-cancel-form">Zrušit</button>
-          <button class="btn btn--primary" id="btn-save-activity">✅ Přidat aktivitu</button>
+          <button class="btn btn--primary" id="btn-save-activity">✅ Přidat</button>
         </div>
       </div>
 
-      <div class="activities-list">
+      <div id="activities-list">
         ${acts.length === 0
-          ? `<div class="empty-state">
-               <span class="empty-state__icon" aria-hidden="true">🗓️</span>
-               <h2 class="empty-state__title">Žádné aktivity</h2>
-               <p class="empty-state__desc">Přidej první aktivitu pro tento den.</p>
-             </div>`
-          : acts.map(a => _buildActivityCard(a)).join('')}
-      </div>
-
-      <div id="day-map-wrap" class="day-map-container" hidden>
-        <div id="day-map" class="day-map"></div>
+          ? `<div class="empty-state--sakura"><p>🌸 Žádné aktivity – přidej první!</p></div>`
+          : acts.map(_buildActivitySakura).join('')}
       </div>
     </div>`;
 }
 
-function _buildActivityCard(act) {
+function _buildActivitySakura(act) {
   const sm     = STATUS_META[act.status ?? 'planned'];
   const author = _users[act.authorUid] ?? {};
   const isMine = act.authorUid === state.user?.uid;
+  const color  = CATEGORY_COLORS[act.category] ?? '#C8A8C8';
 
   return `
-    <div class="activity-card activity-card--${act.status ?? 'planned'}">
-      <div class="activity-card__time">${_esc(act.time ?? '--:--')}</div>
-
-      <div class="activity-card__body">
-        <div class="activity-card__title-row">
-          <h3 class="activity-card__title">${_esc(act.title)}</h3>
-          <button class="activity-card__status-btn" data-id="${act.id}" title="${sm.label}">${sm.icon}</button>
+    <div class="activity-sakura activity-sakura--${act.status ?? 'planned'}" style="--act-color:${color}">
+      <div class="activity-sakura__bubble">
+        <div class="activity-sakura__time">${_esc(act.time ?? '--:--')}</div>
+        <div class="activity-sakura__content">
+          <div class="activity-sakura__title-row">
+            <h3 class="activity-sakura__title">${_esc(act.title)}</h3>
+            <button class="activity-sakura__status" data-id="${act.id}" title="${sm.label}">${sm.icon}</button>
+          </div>
+          ${act.description ? `<p class="activity-sakura__desc">${_esc(act.description)}</p>` : ''}
+          <div class="activity-sakura__meta">
+            ${act.duration ? `<span class="meta-chip">⏱ ${act.duration} h</span>` : ''}
+            ${act.location?.address ? `<span class="meta-chip">📍 ${_esc(act.location.address)}</span>` : ''}
+            ${act.ideaId ? `<span class="meta-chip meta-chip--idea">⭐ Wishlist</span>` : ''}
+            <span class="meta-chip">${author.avatar ?? '👤'} ${_esc(author.nickname ?? 'Někdo')}</span>
+          </div>
         </div>
-        ${act.description ? `<p class="activity-card__desc">${_esc(act.description)}</p>` : ''}
-        <div class="activity-card__meta">
-          ${act.duration           ? `<span class="meta-chip">⏱ ${act.duration} h</span>` : ''}
-          ${act.location?.address  ? `<span class="meta-chip">📍 ${_esc(act.location.address)}</span>` : ''}
-          ${act.ideaId             ? `<span class="meta-chip meta-chip--idea">⭐ Z Wishlistu</span>` : ''}
-          <span class="meta-chip meta-chip--muted">${author.avatar ?? '👤'} ${_esc(author.nickname ?? 'Někdo')}</span>
-        </div>
+        ${isMine ? `<button class="activity-sakura__delete" data-id="${act.id}" aria-label="Smazat">🗑️</button>` : ''}
       </div>
-
-      ${isMine
-        ? `<button class="activity-card__delete" data-id="${act.id}" title="Smazat" aria-label="Smazat">🗑️</button>`
-        : ''}
     </div>`;
 }
 
-function _attachDayHandlers() {
-  // Back to calendar
-  _container?.querySelector('#btn-back')?.addEventListener('click', () => {
+/* ── Event handlers ─────────────────────────────────────────── */
+
+function _attachDayCellHandlers() {
+  _container?.querySelectorAll('.day-cell').forEach(cell => {
+    cell.addEventListener('click', () => {
+      const idx = parseInt(cell.dataset.dayIdx, 10);
+      if (_selectedDay === idx) {
+        _selectedDay = null;
+        _refreshCalendarGrid();
+        _closeDetailPanel();
+      } else {
+        _selectedDay = idx;
+        _refreshCalendarGrid();
+        _openDetailPanel(idx, true);
+      }
+    });
+  });
+}
+
+function _attachCityBannerHandlers() {
+  _container?.querySelectorAll('.city-banner').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const cityId  = btn.dataset.city;
+      const current = _getCityName(cityId);
+      const newName = prompt(`Přejmenuj město (${current}):`, current);
+      if (newName?.trim() && newName.trim() !== current) {
+        await _saveCityName(cityId, newName.trim());
+      }
+    });
+  });
+}
+
+function _attachDetailHandlers() {
+  const panel = _container?.querySelector('#day-detail-panel');
+  if (!panel) return;
+
+  panel.querySelector('#btn-close-detail')?.addEventListener('click', () => {
     _selectedDay = null;
-    _renderPage();
+    _refreshCalendarGrid();
+    _closeDetailPanel();
   });
 
-  // Open form
-  _container?.querySelector('#btn-add-activity')?.addEventListener('click', () => {
-    const form = _container?.querySelector('#add-form');
+  panel.querySelector('#btn-add-activity')?.addEventListener('click', () => {
+    const form = panel.querySelector('#add-form');
     if (!form) return;
     form.hidden = false;
-    requestAnimationFrame(() => {
-      form.classList.add('inline-form--open');
-      setTimeout(() => form.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
-    });
-    _container?.querySelector('#btn-add-activity')?.classList.add('hidden');
+    panel.querySelector('#btn-add-activity')?.classList.add('hidden');
+    setTimeout(() => form.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 50);
   });
 
-  // Close form helper
-  const _closeForm = () => {
-    const form = _container?.querySelector('#add-form');
+  const closeForm = () => {
+    const form = panel.querySelector('#add-form');
     if (!form) return;
-    form.classList.remove('inline-form--open');
-    setTimeout(() => { form.hidden = true; }, 300);
-    _container?.querySelector('#btn-add-activity')?.classList.remove('hidden');
-    ['act-title', 'act-place', 'act-desc'].forEach(id => {
-      const el = _container?.querySelector(`#${id}`);
+    form.hidden = true;
+    panel.querySelector('#btn-add-activity')?.classList.remove('hidden');
+    ['#act-title', '#act-place', '#act-desc'].forEach(sel => {
+      const el = panel.querySelector(sel);
       if (el) el.value = '';
     });
-    const timeEl = _container?.querySelector('#act-time');
-    const durEl  = _container?.querySelector('#act-duration');
-    const ideaEl = _container?.querySelector('#act-idea');
-    if (timeEl) timeEl.value = '09:00';
-    if (durEl)  durEl.value  = '2';
-    if (ideaEl) ideaEl.value = '';
+    const t = panel.querySelector('#act-time');
+    const d = panel.querySelector('#act-duration');
+    const i = panel.querySelector('#act-idea');
+    if (t) t.value = '09:00';
+    if (d) d.value = '2';
+    if (i) i.value = '';
   };
 
-  _container?.querySelector('#btn-close-form')?.addEventListener('click', _closeForm);
-  _container?.querySelector('#btn-cancel-form')?.addEventListener('click', _closeForm);
+  panel.querySelector('#btn-cancel-form')?.addEventListener('click', closeForm);
 
-  // Wishlist auto-fill
-  _container?.querySelector('#act-idea')?.addEventListener('change', e => {
-    const idea = _ideas.find(i => i.id === e.target.value);
+  panel.querySelector('#act-idea')?.addEventListener('change', e => {
+    const idea = _ideas.find(x => x.id === e.target.value);
     if (!idea) return;
-    const titleEl = _container?.querySelector('#act-title');
-    const descEl  = _container?.querySelector('#act-desc');
-    const placeEl = _container?.querySelector('#act-place');
+    const titleEl = panel.querySelector('#act-title');
+    const descEl  = panel.querySelector('#act-desc');
+    const placeEl = panel.querySelector('#act-place');
     if (titleEl) titleEl.value = idea.title       ?? '';
     if (descEl)  descEl.value  = idea.description ?? '';
     if (placeEl) placeEl.value = idea.city        ?? '';
   });
 
-  // Save
-  _container?.querySelector('#btn-save-activity')?.addEventListener('click', _addActivity);
+  panel.querySelector('#btn-save-activity')?.addEventListener('click', _addActivity);
 
-  // Status + delete
-  _container?.querySelectorAll('.activity-card__status-btn').forEach(btn => {
-    btn.addEventListener('click', () => _cycleStatus(btn.dataset.id));
-  });
-  _container?.querySelectorAll('.activity-card__delete').forEach(btn => {
-    btn.addEventListener('click', () => _deleteActivity(btn.dataset.id));
-  });
-
-  // Day map
-  _container?.querySelector('#btn-show-map')?.addEventListener('click', _toggleDayMap);
+  const listEl = panel.querySelector('#activities-list');
+  if (listEl) _attachActivityHandlers(listEl);
 }
 
-/* ════════════════════════════════════════════════════════════
-   ADD / CYCLE / DELETE
-   ════════════════════════════════════════════════════════════ */
+function _attachActivityHandlers(listEl) {
+  listEl.querySelectorAll('.activity-sakura__status').forEach(btn => {
+    btn.addEventListener('click', () => _cycleStatus(btn.dataset.id));
+  });
+  listEl.querySelectorAll('.activity-sakura__delete').forEach(btn => {
+    btn.addEventListener('click', () => _deleteActivity(btn.dataset.id));
+  });
+}
+
+/* ── Detail panel open/close ────────────────────────────────── */
+
+function _openDetailPanel(dayIdx, scroll) {
+  const panel = _container?.querySelector('#day-detail-panel');
+  if (!panel) return;
+
+  panel.innerHTML = _buildDayDetail(dayIdx);
+  panel.offsetHeight; // force reflow for CSS transition
+  panel.classList.add('day-detail-panel--open');
+  _attachDetailHandlers();
+
+  if (scroll) {
+    setTimeout(() => panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 200);
+  }
+}
+
+function _closeDetailPanel() {
+  const panel = _container?.querySelector('#day-detail-panel');
+  if (!panel) return;
+  panel.classList.remove('day-detail-panel--open');
+  setTimeout(() => { if (panel) panel.innerHTML = ''; }, 420);
+}
+
+/* ── CRUD ───────────────────────────────────────────────────── */
 
 async function _addActivity() {
-  const title    = _container?.querySelector('#act-title')?.value.trim();
-  const time     = _container?.querySelector('#act-time')?.value ?? '09:00';
-  const duration = parseFloat(_container?.querySelector('#act-duration')?.value ?? '2');
-  const place    = _container?.querySelector('#act-place')?.value.trim();
-  const desc     = _container?.querySelector('#act-desc')?.value.trim();
-  const ideaId   = _container?.querySelector('#act-idea')?.value || null;
+  const panel    = _container?.querySelector('#day-detail-panel');
+  const title    = panel?.querySelector('#act-title')?.value.trim();
+  const time     = panel?.querySelector('#act-time')?.value ?? '09:00';
+  const duration = parseFloat(panel?.querySelector('#act-duration')?.value ?? '2');
+  const place    = panel?.querySelector('#act-place')?.value.trim();
+  const desc     = panel?.querySelector('#act-desc')?.value.trim();
+  const ideaId   = panel?.querySelector('#act-idea')?.value || null;
 
   if (!title) { showToast('Vyplň název aktivity.', 'warning'); return; }
+
+  const date = new Date(TRIP_START);
+  date.setDate(TRIP_START.getDate() + _selectedDay);
 
   let location = place ? { address: place } : null;
   if (ideaId) {
@@ -356,7 +474,7 @@ async function _addActivity() {
     }
   }
 
-  const saveBtn = _container?.querySelector('#btn-save-activity');
+  const saveBtn = panel?.querySelector('#btn-save-activity');
   if (saveBtn) saveBtn.disabled = true;
 
   try {
@@ -365,7 +483,7 @@ async function _addActivity() {
       description: desc  || null,
       time,
       duration,
-      dayKey:    _dayKey(_selectedDay),
+      dayKey:    _dayKey(date),
       location:  location ?? null,
       ideaId,
       status:    'planned',
@@ -374,9 +492,7 @@ async function _addActivity() {
       updatedAt: serverTimestamp(),
     });
     showToast('✅ Aktivita přidána!', 'success');
-    const form = _container?.querySelector('#add-form');
-    if (form) { form.classList.remove('inline-form--open'); setTimeout(() => { form.hidden = true; }, 300); }
-    _container?.querySelector('#btn-add-activity')?.classList.remove('hidden');
+    panel?.querySelector('#btn-cancel-form')?.click();
   } catch (err) {
     console.error('[itinerary] addActivity:', err);
     showToast('Nepodařilo se přidat aktivitu.', 'error');
@@ -406,63 +522,17 @@ async function _deleteActivity(id) {
   }
 }
 
-/* ════════════════════════════════════════════════════════════
-   DAY MAP
-   ════════════════════════════════════════════════════════════ */
-
-function _toggleDayMap() {
-  const wrap = _container?.querySelector('#day-map-wrap');
-  if (!wrap) return;
-  if (wrap.hidden) { wrap.hidden = false; setTimeout(_initDayMap, 100); }
-  else             { wrap.hidden = true; }
-}
-
-function _initDayMap() {
-  const mapEl = _container?.querySelector('#day-map');
-  if (!mapEl || !window.L) return;
-
-  const key  = _dayKey(_selectedDay);
-  const acts = _activities
-    .filter(a => a.dayKey === key && a.location?.lat != null && a.location?.lng != null)
-    .sort((a, b) => (a.time ?? '').localeCompare(b.time ?? ''));
-
-  if (!acts.length) return;
-
-  if (mapEl._leaflet_id) { mapEl._leaflet_id = null; mapEl.innerHTML = ''; }
-
-  const map = L.map(mapEl).setView([acts[0].location.lat, acts[0].location.lng], 13);
-
-  L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}',
-    { attribution: '&copy; Esri', maxZoom: 16, crossOrigin: true }
-  ).addTo(map);
-  L.tileLayer(
-    'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}',
-    { attribution: '', maxZoom: 16, crossOrigin: true, pane: 'overlayPane' }
-  ).addTo(map);
-
-  const points = acts.map((act, idx) => {
-    const ll = [act.location.lat, act.location.lng];
-    L.marker(ll, {
-      icon: L.divIcon({
-        className: 'day-route-marker',
-        html: `<div class="day-route-num">${idx + 1}</div>`,
-        iconSize: [32, 32], iconAnchor: [16, 16],
-      }),
-    }).bindPopup(`<strong>${_esc(act.title)}</strong><br><small>${_esc(act.time ?? '')} · ${act.duration ?? 0} h</small>`)
-      .addTo(map);
-    return ll;
-  });
-
-  if (points.length > 1) {
-    L.polyline(points, { color: '#0A84FF', weight: 3, opacity: 0.7, dashArray: '6,8' }).addTo(map);
+async function _saveCityName(cityId, name) {
+  try {
+    await setDoc(doc(db, 'itineraryCities', cityId), { name }, { merge: true });
+    showToast(`Město přejmenováno na "${name}".`, 'success');
+  } catch (err) {
+    console.error('[itinerary] saveCityName:', err);
+    showToast('Nepodařilo se uložit název.', 'error');
   }
-  map.fitBounds(points, { padding: [40, 40] });
 }
 
-/* ════════════════════════════════════════════════════════════
-   STATS
-   ════════════════════════════════════════════════════════════ */
+/* ── Stats ──────────────────────────────────────────────────── */
 
 function _updateStats() {
   const el = _container?.querySelector('#itinerary-stats');
@@ -474,28 +544,14 @@ function _updateStats() {
 
   el.innerHTML = `
     <div class="stats-grid">
-      <div class="stats-item">
-        <div class="stats-value">${total}</div>
-        <div class="stats-label">aktivit</div>
-      </div>
-      <div class="stats-item">
-        <div class="stats-value">${perDay}</div>
-        <div class="stats-label">/ den</div>
-      </div>
-      <div class="stats-item stats-item--good">
-        <div class="stats-value">${done}</div>
-        <div class="stats-label">✅ hotovo</div>
-      </div>
-      <div class="stats-item">
-        <div class="stats-value">${planned}</div>
-        <div class="stats-label">⏳ plánováno</div>
-      </div>
+      <div class="stats-item"><div class="stats-value">${total}</div><div class="stats-label">aktivit</div></div>
+      <div class="stats-item"><div class="stats-value">${perDay}</div><div class="stats-label">/ den</div></div>
+      <div class="stats-item stats-item--good"><div class="stats-value">${done}</div><div class="stats-label">✅ hotovo</div></div>
+      <div class="stats-item"><div class="stats-value">${planned}</div><div class="stats-label">⏳ plánováno</div></div>
     </div>`;
 }
 
-/* ════════════════════════════════════════════════════════════
-   DATA LOADING
-   ════════════════════════════════════════════════════════════ */
+/* ── Data loading ───────────────────────────────────────────── */
 
 async function _loadUsers() {
   try {
@@ -512,37 +568,46 @@ async function _loadIdeas() {
   } catch (err) { console.error('[itinerary] loadIdeas:', err); }
 }
 
-function _setupListener() {
+function _setupActivitiesListener() {
   _activitiesUnsub?.();
   const q = query(collection(db, 'activities'), orderBy('createdAt', 'asc'));
-  _activitiesUnsub = onSnapshot(q, (snap) => {
+  _activitiesUnsub = onSnapshot(q, snap => {
     _activities = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-    _renderPage();
+    _refreshCalendarGrid();
+    _refreshDetailActivities();
+    _updateStats();
   }, err => console.error('[itinerary] snapshot:', err));
 }
 
-/* ════════════════════════════════════════════════════════════
-   CLEANUP
-   ════════════════════════════════════════════════════════════ */
+function _setupCitiesListener() {
+  _citiesUnsub?.();
+  _citiesUnsub = onSnapshot(collection(db, 'itineraryCities'), snap => {
+    _cities = {};
+    snap.docs.forEach(d => { _cities[d.id] = d.data().name; });
+    // Update banner name text in-place
+    CITY_DEFS.forEach(c => {
+      const nameEl = _container?.querySelector(`.city-banner[data-city="${c.id}"] .city-banner__name`);
+      if (nameEl) nameEl.textContent = _getCityName(c.id);
+    });
+    // Update open detail panel title
+    if (_selectedDay !== null) {
+      const city    = _cityForDay(_selectedDay);
+      const titleEl = _container?.querySelector('.day-detail-card__title');
+      if (titleEl) {
+        const dayNum = _selectedDay + 1;
+        titleEl.textContent = `Den ${dayNum} · ${_getCityName(city?.id ?? '')}`;
+      }
+    }
+  }, err => console.error('[itinerary] cities snapshot:', err));
+}
+
+/* ── Cleanup ────────────────────────────────────────────────── */
 
 function _cleanup() {
   _activitiesUnsub?.();
+  _citiesUnsub?.();
   _activitiesUnsub = null;
+  _citiesUnsub     = null;
   _container       = null;
   _selectedDay     = null;
-}
-
-/* ════════════════════════════════════════════════════════════
-   HELPERS
-   ════════════════════════════════════════════════════════════ */
-
-function _dayKey(date) {
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-}
-
-function _esc(str) {
-  if (!str) return '';
-  return String(str)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
