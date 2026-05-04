@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Set Admin – Japan Trip</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 60px auto; padding: 24px; }
+    h1   { color: #C2185B; }
+    button {
+      background: linear-gradient(135deg, #FF6B8A, #FF9966);
+      color: #fff; border: none; padding: 12px 24px;
+      border-radius: 12px; font-size: 15px; font-weight: 700;
+      cursor: pointer; margin-bottom: 16px;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    pre  { background: #f5f5f5; padding: 16px; border-radius: 8px; font-size: 13px; white-space: pre-wrap; }
+    .ok  { color: #2D7A4F; }
+    .err { color: #C2185B; }
+  </style>
+</head>
+<body>
+  <h1>🌸 Set Admin Role</h1>
+  <p>Tento nástroj nastaví <code>role: "admin"</code> v tvém users dokumentu.<br>
+     Spouštěj jen jednou. Soubor poté smaž nebo odstran z hosting ignore listu.</p>
+
+  <button id="btn">🔐 Přihlásit se a nastavit admin</button>
+  <pre id="log">Stiskni tlačítko…</pre>
+
+  <script type="module">
+    import { initializeApp }                from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-app.js';
+    import { getAuth, signInWithPopup, GoogleAuthProvider } from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-auth.js';
+    import { getFirestore, doc, getDoc, setDoc, updateDoc } from 'https://www.gstatic.com/firebasejs/11.5.0/firebase-firestore.js';
+
+    const firebaseConfig = {
+      apiKey:            "AIzaSyB7BFQFLlHgmmVVjfJMPGujzbAxddFyIR8",
+      authDomain:        "japan-web-app.web.app",
+      projectId:         "japan-web-app",
+      storageBucket:     "japan-web-app.firebasestorage.app",
+      messagingSenderId: "931635362119",
+      appId:             "1:931635362119:web:a8f84b1a6cecf7903a7462",
+    };
+
+    const ADMIN_EMAIL = 'nguyenmatej@gmail.com';
+
+    const app  = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db   = getFirestore(app);
+
+    const log = (msg, cls = '') => {
+      const el = document.getElementById('log');
+      el.innerHTML += `<span class="${cls}">${msg}\n</span>`;
+    };
+
+    document.getElementById('btn').addEventListener('click', async () => {
+      const btn = document.getElementById('btn');
+      btn.disabled = true;
+      document.getElementById('log').innerHTML = '';
+
+      try {
+        log('⏳ Otevírám Google Sign-In…');
+        const provider = new GoogleAuthProvider();
+        const result   = await signInWithPopup(auth, provider);
+        const user     = result.user;
+
+        log(`✅ Přihlášen jako: ${user.email}`, 'ok');
+
+        if (user.email !== ADMIN_EMAIL) {
+          log(`❌ Tento nástroj je jen pro ${ADMIN_EMAIL}.`, 'err');
+          btn.disabled = false;
+          return;
+        }
+
+        log('⏳ Hledám users dokument…');
+        const userRef = doc(db, 'users', user.uid);
+        const snap    = await getDoc(userRef);
+
+        if (snap.exists()) {
+          await updateDoc(userRef, { role: 'admin' });
+          log('✅ Pole role: "admin" přidáno do existujícího dokumentu!', 'ok');
+        } else {
+          await setDoc(userRef, {
+            uid:         user.uid,
+            email:       user.email,
+            nickname:    user.displayName ?? 'Matěj',
+            avatar:      '👑',
+            role:        'admin',
+            createdAt:   new Date().toISOString(),
+          });
+          log('✅ Users dokument vytvořen s role: "admin"!', 'ok');
+        }
+
+        log('');
+        log('🎉 HOTOVO! Admin role je nastavena.', 'ok');
+        log('ℹ️  Tento soubor (tools/set-admin.html) můžeš smazat.', '');
+      } catch (err) {
+        log(`❌ Chyba: ${err.message}`, 'err');
+        btn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

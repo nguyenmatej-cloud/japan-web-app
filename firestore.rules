@@ -1,0 +1,276 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ═══════════════════════════════════════════════════════
+    // HELPER FUNCTIONS
+    // ═══════════════════════════════════════════════════════
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Whitelist: user must have a document in the users collection
+    function isWhitelisted() {
+      return isSignedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isWhitelisted()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isOwner(authorUidField) {
+      return isWhitelisted()
+        && resource.data[authorUidField] == request.auth.uid;
+    }
+
+    function isOwnerOrAdmin(authorUidField) {
+      return isOwner(authorUidField) || isAdmin();
+    }
+
+    // On create: the author field must equal the authenticated uid
+    function authorMatchesRequester(authorUidField) {
+      return request.resource.data[authorUidField] == request.auth.uid;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // USERS – user profiles
+    // ═══════════════════════════════════════════════════════
+
+    match /users/{userId} {
+      // Any whitelisted user can read profiles
+      allow read: if isWhitelisted();
+
+      // Own profile create/update (cannot self-assign role)
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && (!('role' in request.resource.data));
+
+      allow update: if isSignedIn()
+        && request.auth.uid == userId
+        && (
+          !('role' in request.resource.data)
+          || request.resource.data.role == resource.data.get('role', '')
+        );
+
+      // Admin can update anyone, including role field
+      allow update: if isAdmin();
+
+      // Only admin can delete
+      allow delete: if isAdmin();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // IDEAS – wishlist items
+    // ═══════════════════════════════════════════════════════
+
+    match /ideas/{ideaId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && authorMatchesRequester('authorUid');
+
+      // Owner or admin can update anything except authorUid
+      allow update: if isWhitelisted()
+        && (resource.data.authorUid == request.auth.uid || isAdmin())
+        && request.resource.data.authorUid == resource.data.authorUid;
+
+      // Anyone whitelisted can update only the likes field
+      allow update: if isWhitelisted()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes']);
+
+      allow delete: if isOwnerOrAdmin('authorUid');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // IDEA COMMENTS (subcollection)
+    // ═══════════════════════════════════════════════════════
+
+    match /ideas/{ideaId}/comments/{commentId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && authorMatchesRequester('authorUid');
+
+      allow update: if isOwner('authorUid');
+      allow delete: if isOwnerOrAdmin('authorUid');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // TODOS – shared task list
+    // ═══════════════════════════════════════════════════════
+
+    match /todos/{todoId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && authorMatchesRequester('authorUid');
+
+      // Author, assignee, or admin can update; authorUid is immutable
+      allow update: if isWhitelisted()
+        && (
+          resource.data.authorUid == request.auth.uid
+          || resource.data.get('assignee', '') == request.auth.uid
+          || isAdmin()
+        )
+        && request.resource.data.authorUid == resource.data.authorUid;
+
+      allow delete: if isOwnerOrAdmin('authorUid');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // EXPENSES – trip expenses
+    // ═══════════════════════════════════════════════════════
+
+    match /expenses/{expenseId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && (
+          request.resource.data.get('payer', '') == request.auth.uid
+          || authorMatchesRequester('authorUid')
+        );
+
+      allow update: if isWhitelisted()
+        && (
+          resource.data.get('payer', '') == request.auth.uid
+          || resource.data.get('authorUid', '') == request.auth.uid
+          || isAdmin()
+        );
+
+      allow delete: if isWhitelisted()
+        && (
+          resource.data.get('payer', '') == request.auth.uid
+          || resource.data.get('authorUid', '') == request.auth.uid
+          || isAdmin()
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // MESSAGES – group chat
+    // ═══════════════════════════════════════════════════════
+
+    match /messages/{messageId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && authorMatchesRequester('authorUid');
+
+      // Anyone whitelisted can update reactions and readBy only
+      allow update: if isWhitelisted()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['reactions', 'readBy']);
+
+      // Owner can update content; authorUid is immutable
+      allow update: if isOwner('authorUid')
+        && request.resource.data.authorUid == resource.data.authorUid;
+
+      allow delete: if isOwnerOrAdmin('authorUid');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // PRESENCE – online status heartbeat
+    // ═══════════════════════════════════════════════════════
+
+    match /presence/{userId} {
+      allow read: if isWhitelisted();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // CHAT READ TRACKER – unread badge state
+    // ═══════════════════════════════════════════════════════
+
+    match /chatRead/{userId} {
+      allow read:  if isSignedIn() && request.auth.uid == userId;
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // TYPING INDICATOR (legacy support)
+    // ═══════════════════════════════════════════════════════
+
+    match /typing/{userId} {
+      allow read:  if isWhitelisted();
+      allow write: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // LIVE LOCATIONS – GPS sharing
+    // ═══════════════════════════════════════════════════════
+
+    match /liveLocations/{userId} {
+      // Mutual visibility: every whitelisted member sees all locations
+      allow read: if isWhitelisted();
+
+      // Can only write own location; userId in document must match auth uid
+      allow create, update: if isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.userId == request.auth.uid;
+
+      // Can delete own or admin can delete any
+      allow delete: if isSignedIn()
+        && (request.auth.uid == userId || isAdmin());
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // ACTIVITIES – itinerary items (collaborative editing)
+    // ═══════════════════════════════════════════════════════
+
+    match /activities/{activityId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && authorMatchesRequester('authorUid');
+
+      // Any member can update (group planning); authorUid is immutable
+      allow update: if isWhitelisted()
+        && request.resource.data.authorUid == resource.data.authorUid;
+
+      allow delete: if isOwnerOrAdmin('authorUid');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // ITINERARY CITIES – per-day city assignments
+    // ═══════════════════════════════════════════════════════
+
+    match /itineraryCities/{dayKey} {
+      allow read: if isWhitelisted();
+
+      // Any member can edit city assignments (group planning)
+      allow create, update, delete: if isWhitelisted();
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // PHOTOS (future use)
+    // ═══════════════════════════════════════════════════════
+
+    match /photos/{photoId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && authorMatchesRequester('authorUid');
+
+      // Anyone whitelisted can update likes/comments fields only
+      allow update: if isWhitelisted()
+        && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['likes', 'comments']);
+
+      // Owner can update everything; authorUid is immutable
+      allow update: if isOwner('authorUid')
+        && request.resource.data.authorUid == resource.data.authorUid;
+
+      allow delete: if isOwnerOrAdmin('authorUid');
+    }
+
+    // ═══════════════════════════════════════════════════════
+    // DEFAULT – deny everything not explicitly matched
+    // ═══════════════════════════════════════════════════════
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

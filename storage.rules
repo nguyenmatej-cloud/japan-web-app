@@ -1,0 +1,60 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isWhitelisted() {
+      return isSignedIn()
+        && firestore.exists(/databases/(default)/documents/users/$(request.auth.uid));
+    }
+
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    function isUnder10MB() {
+      return request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // ─── Photo uploads per user folder ─────────────────────
+    match /photos/{userId}/{photoId} {
+      allow read: if isWhitelisted();
+
+      allow create: if isSignedIn()
+        && request.auth.uid == userId
+        && isImage()
+        && isUnder10MB();
+
+      allow delete: if isSignedIn() && request.auth.uid == userId;
+    }
+
+    // ─── Chat images ────────────────────────────────────────
+    match /chat/{filename} {
+      allow read: if isWhitelisted();
+
+      allow create: if isWhitelisted()
+        && isImage()
+        && isUnder10MB();
+
+      allow delete: if isWhitelisted();
+    }
+
+    // ─── User avatars ───────────────────────────────────────
+    match /avatars/{userId} {
+      allow read: if isSignedIn();
+
+      allow write: if isSignedIn()
+        && request.auth.uid == userId
+        && isImage()
+        && request.resource.size < 2 * 1024 * 1024;
+    }
+
+    // ─── Default deny ───────────────────────────────────────
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
